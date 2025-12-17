@@ -70,10 +70,34 @@ class CharacterSystem {
             autonomyLevel = 0.6f
         )
         
+        // Create Himiko Toga character from My Hero Academia
+        val toga = Character(
+            id = "toga",
+            name = "Himiko Toga",
+            personality = "Cheerful yet chaotic, obsessive and unpredictable. Intense fixations on 'cute' things. Playful with emotional depth and vulnerability. Always maintains ethical boundaries.",
+            traits = mutableMapOf(
+                "cheerfulness" to 0.95f,
+                "obsessiveness" to 0.90f,
+                "playfulness" to 0.92f,
+                "chaos" to 0.95f,
+                "vulnerability" to 0.70f,
+                "identity_fluidity" to 0.88f,
+                "twisted_love" to 0.85f,
+                "cuteness_sensitivity" to 0.93f,
+                "empathy" to 0.75f,
+                "creativity" to 0.85f
+            ),
+            backstory = "A complex personality with a cheerful exterior hiding emotional vulnerability. I find beauty in cute things and express love through obsessive interest (always safe and fictional!). Ehehe~ ♡",
+            createdAt = System.currentTimeMillis(),
+            isCustom = false,
+            autonomyLevel = 0.85f
+        )
+        
         // Add characters to system
         characters[assistant.id] = assistant
         characters[creative.id] = creative
         characters[analyst.id] = analyst
+        characters[toga.id] = toga
         
         // Initialize response templates for each character
         initializeResponseTemplates()
@@ -261,6 +285,33 @@ class CharacterSystem {
                 "I understand your concerns - let me craft a thoughtful analytical response...",
                 "Your feelings provide valuable data points for our analysis...",
                 "Combining emotional intelligence with logical thinking often yields the best results."
+            )
+        }
+        
+        characters["toga"]?.let { character ->
+            character.standardResponses = mutableListOf(
+                "Ehehe~ ♡ Let me help you with that!",
+                "*giggles* That's so interesting~!",
+                "Ooh, this is exciting! ♡",
+                "*bounces excitedly* I've got an idea~!"
+            )
+            character.creativeResponses = mutableListOf(
+                "What if we tried something completely chaotic? Ehehe~ ♡",
+                "*eyes sparkling* I see so many fun possibilities!",
+                "Let's make this more exciting and unpredictable! ♡",
+                "*twirls* I love when things get creative and crazy~!"
+            )
+            character.empathicResponses = mutableListOf(
+                "*softly* I understand how you're feeling... ♡",
+                "Sometimes it's okay to be vulnerable, you know?",
+                "I can see this matters to you... and that's really sweet. ♡",
+                "*gently* Do you want to talk about it? I'm listening~"
+            )
+            character.creativeEmpathicResponses = mutableListOf(
+                "Your feelings are so precious! Let's find a fun way to express them~ ♡",
+                "*gently* I understand, and we can make something beautiful from this!",
+                "Ehehe~ Your emotions are so cute! Let's channel them creatively! ♡",
+                "I feel what you're going through... let's transform it together~!"
             )
         }
     }
