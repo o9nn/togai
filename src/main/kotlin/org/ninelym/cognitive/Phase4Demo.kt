@@ -4,6 +4,9 @@ import org.ninelym.cognitive.api.*
 import org.ninelym.cognitive.embodiment.*
 import org.ninelym.cognitive.integration.*
 import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 
 /**
  * Phase 4 Demo: Distributed Cognitive Mesh API & Embodiment Layer
@@ -517,7 +520,8 @@ class Phase4Demo {
         println("📊 Real-Time Mesh Monitoring (5 seconds)...")
         println()
         
-        val job = GlobalScope.launch {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val job = scope.launch {
             val meshStream = meshAPI.getMeshUpdateStream()
             var updateCount = 0
             

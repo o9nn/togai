@@ -206,6 +206,14 @@ class ECANKernel(
     }
     
     /**
+     * Run a full attention allocation cycle
+     * Combines allocation, spreading, and resource management
+     */
+    fun runAttentionCycle(): AttentionAllocationResult {
+        return allocateAttention()
+    }
+    
+    /**
      * Convert cognitive tensor to ECAN task representation  
      * Tensor signature: [tasks, attention, priority, resources] maps to
      * [modality -> tasks, salience -> attention, autonomyIndex -> priority, depth -> resources]

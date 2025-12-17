@@ -51,8 +51,8 @@ class Phase6Demo {
             Triple(AtomType.CONCEPT, "consciousness", 0.9f),
             Triple(AtomType.CONCEPT, "self_awareness", 0.85f),
             Triple(AtomType.CONCEPT, "cognitive_unity", 0.8f),
-            Triple(AtomType.RELATION, "enables", 0.7f),
-            Triple(AtomType.RELATION, "validates", 0.75f),
+            Triple(AtomType.LINK, "enables", 0.7f),
+            Triple(AtomType.LINK, "validates", 0.75f),
             Triple(AtomType.PREDICATE, "is_tested", 0.9f),
             Triple(AtomType.PREDICATE, "is_documented", 0.95f),
             Triple(AtomType.PREDICATE, "is_unified", 0.85f)
