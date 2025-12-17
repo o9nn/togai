@@ -309,7 +309,7 @@ class CharacterSystem {
             )
             character.creativeEmpathicResponses = mutableListOf(
                 "Your feelings are so precious! Let's find a fun way to express them~ ♡",
-                "*holds your hand* I understand, and we can make something beautiful from this!",
+                "*gently* I understand, and we can make something beautiful from this!",
                 "Ehehe~ Your emotions are so cute! Let's channel them creatively! ♡",
                 "I feel what you're going through... let's transform it together~!"
             )

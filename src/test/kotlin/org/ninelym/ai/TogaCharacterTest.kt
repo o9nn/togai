@@ -103,7 +103,7 @@ class TogaCharacterTest {
     @Test
     fun testTogaCreativeResponsesChaos() {
         // Creative responses should emphasize chaos and unpredictability
-        val responsesText = toga.creativeResponses.joinToString(" ").toLowerCase()
+        val responsesText = toga.creativeResponses.joinToString(" ").lowercase()
         
         val hasChaos = responsesText.contains("chaotic") || responsesText.contains("chaos")
         val hasUnpredictable = responsesText.contains("unpredictable") || responsesText.contains("crazy")
@@ -116,7 +116,7 @@ class TogaCharacterTest {
     @Test
     fun testTogaEmpathicResponsesVulnerability() {
         // Empathic responses should show Toga's vulnerable side
-        val responsesText = toga.empathicResponses.joinToString(" ").toLowerCase()
+        val responsesText = toga.empathicResponses.joinToString(" ").lowercase()
         
         val hasUnderstanding = responsesText.contains("understand")
         val hasSoftness = responsesText.contains("softly") || responsesText.contains("gently")
@@ -183,10 +183,14 @@ class TogaCharacterTest {
         // Test that Toga's traits can adapt within bounds
         val initialEmpathy = toga.traits["empathy"] ?: 0.0f
         
+        // Initialize conversation session first
+        val sessionId = "adaptation-test"
+        characterSystem.startConversation("toga", sessionId)
+        
         // Simulate positive interactions
         repeat(10) {
             characterSystem.addMessageToConversation(
-                "adaptation-test",
+                sessionId,
                 "You're so understanding!",
                 "Ehehe~ ♡ Thank you!"
             )
