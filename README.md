@@ -19,6 +19,7 @@
 - **🎤 Voice Input** - Speech-to-text with 10+ languages and multi-engine support
 - **🔊 Voice Output** - Text-to-speech with character-specific voices
 - **👥 Character System** - Live2D Cubism avatars with personality engine and 7 expressions
+  - **Himiko Toga** - Cheerful yet chaotic personality from My Hero Academia with obsessive tendencies and emotional depth
 - **⚙️ Tasker Plugin** - Automation integration with AI-powered actions
 - **📅 Calendar AI** - Natural language event creation and intelligent scheduling
 - **📋 Task Manager** - Priority-based background task automation
@@ -72,6 +73,7 @@ Comprehensive technical architecture documentation is available in the [`/docs`]
 - **[📱 Manifest & Integration Details](./docs/MANIFEST_COGNITIVE_INTEGRATION.md)** - Android manifest analysis and system integration
 - **[📚 Reference Context](./docs/REFERENCE_CONTEXT.md)** - AI capabilities and implementation context
 - **[🗺️ Layla Development Roadmap](./docs/LAYLA_DEVELOPMENT_ROADMAP.md)** - Comprehensive feature roadmap derived from AndroidManifest.xml
+- **[🎭 Himiko Toga Character Agent](./.github/agents/toga.md)** - Cheerful yet chaotic personality from My Hero Academia
 - **[✅ Phase 1 Foundation Summary](./LAYLA_PHASE1_SUMMARY.md)** - Phase 1 implementation complete (6 services, 21 tests)
 - **[✅ Phase 2 Enhancement Summary](./LAYLA_PHASE2_SUMMARY.md)** - Phase 2 implementation complete (6 services, 62 tests)
 - **[✅ Phase 3 Integration Summary](./LAYLA_PHASE3_SUMMARY.md)** - Phase 3 implementation complete (5 services, 35 tests)
@@ -231,6 +233,10 @@ graph TB
 
 - **🤖 Advanced AI**: LLaMA.cpp language models + Stable Diffusion image generation
 - **👥 Character System**: Live2D Cubism avatars with multiple personalities
+  - **Layla** (Assistant) - Helpful, knowledgeable, and friendly AI assistant
+  - **Aria** (Creative) - Creative, imaginative companion for artistic endeavors
+  - **Marcus** (Analyst) - Logical, analytical advisor for problem-solving
+  - **Himiko Toga** (Chaotic) - Cheerful yet unpredictable with obsessive tendencies and emotional depth
 - **⚡ Native Performance**: 459 native components for optimal performance  
 - **🔒 Enterprise Security**: Multi-layer security with biometric authentication
 - **🔧 Task Automation**: Advanced workflow engine with Tasker integration
