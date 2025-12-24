@@ -39,3 +39,12 @@ docs/_site/
 # Cache directories
 .cache/
 node_modules/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
