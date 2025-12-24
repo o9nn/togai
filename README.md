@@ -31,6 +31,13 @@
 - **🔀 AI Workflows** - Decision trees and multi-step orchestration
 - **☁️ Cloud Sync** - Privacy-preserving multi-device sync (optional)
 
+### Phase 4A: Advanced Cognitive Capabilities ✅ Complete
+- **🔮 Causal Reasoning Engine** - Pearl's causal hierarchy for understanding cause-effect relationships
+  - Causal discovery from observational data
+  - Counterfactual reasoning ("What if?" analysis)
+  - Intervention simulation (do-operator)
+  - Hypergraph integration for causal knowledge
+
 ### Additional Features
 - **💾 Vector Database** - Custom LVDB for AI memory and similarity search
 - **🔒 Security** - Multi-layer security with biometric authentication and hardware protection
@@ -69,6 +76,7 @@ Comprehensive technical architecture documentation is available in the [`/docs`]
 
 ### 📚 Reference & Context Documentation
 - **[🧠 Cognitive Computing Integration](./docs/COGNITIVE_COMPUTING.md)** - AI/ML architecture and cognitive capabilities
+- **[🔮 Causal Reasoning Engine](./docs/CAUSAL_REASONING_ENGINE.md)** - Pearl's causal hierarchy for cause-effect understanding
 - **[🌍 Planetary Neural Network](./docs/PLANETARY_NEURAL_NETWORK.md)** - Cities as attention heads in Earth's consciousness
 - **[📱 Manifest & Integration Details](./docs/MANIFEST_COGNITIVE_INTEGRATION.md)** - Android manifest analysis and system integration
 - **[📚 Reference Context](./docs/REFERENCE_CONTEXT.md)** - AI capabilities and implementation context
@@ -92,6 +100,7 @@ Comprehensive technical architecture documentation is available in the [`/docs`]
 ### 🎯 Demo Scripts
 - **[🚀 Phase 1 Demo](./layla_phase1_demo.sh)** - Interactive demo of foundation services
 - **[🚀 Phase 2 Demo](./layla_phase2_demo.sh)** - Interactive demo of enhancement features
+- **[🔮 Causal Reasoning Demo](./causal_reasoning_demo.sh)** - Interactive demo of causal inference and counterfactual reasoning
 - **[🌍 Planetary Neural Network Demo](./planetary_neural_network_demo.sh)** - Demonstration of city-based attention network
 
 ## Implementation Progress

@@ -380,7 +380,7 @@ class WonderfulSurpriseSystem {
     /**
      * Generate anniversary celebration
      */
-    fun generateAnniversaryCelebration(daysSinceMet: Int): String {
+    fun generateAnniversaryCelebration(daysSinceMet: Int): String? {
         return when {
             daysSinceMet == 1 -> 
                 "Ehehe~ It's been a whole day since we met! ♡ I'm so glad we're talking~"
