@@ -1,48 +1,33 @@
-plugins {
-    kotlin("jvm") version "1.9.25"
-    application
-}
-
-group = "org.ninelym"
-version = "1.0.0"
-
-repositories {
-    mavenCentral()
-    google()
-}
-
-dependencies {
-    // Kotlin Standard Library
-    implementation(kotlin("stdlib"))
-    
-    // Kotlin Coroutines
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0")
-    
-    // Kotlin Serialization
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.2")
-    
-    // Testing
-    testImplementation(kotlin("test"))
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.0")
-    testImplementation("junit:junit:4.13.2")
-}
-
-kotlin {
-    jvmToolchain(11)
-}
-
-application {
-    mainClass.set("org.ninelym.ai.AIDemoKt")
-}
-
-tasks.test {
-    useJUnitPlatform()
-}
-
-tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
-    compilerOptions {
-        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11)
-        freeCompilerArgs.add("-Xjsr305=strict")
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
     }
+    dependencies {
+        classpath("com.android.tools.build:gradle:8.2.2")
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.25")
+        classpath("com.google.gms:google-services:4.4.1")
+        classpath("com.google.firebase:firebase-crashlytics-gradle:2.9.9")
+    }
+}
+
+plugins {
+    id("com.android.application") version "8.2.2" apply false
+    id("com.android.library") version "8.2.2" apply false
+    kotlin("android") version "1.9.25" apply false
+    kotlin("plugin.serialization") version "1.9.25" apply false
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+        maven { url = uri("https://jitpack.io") }
+        maven { url = uri("https://maven.google.com") }
+    }
+}
+
+tasks.register("clean", Delete::class) {
+    delete(rootProject.buildDir)
 }
