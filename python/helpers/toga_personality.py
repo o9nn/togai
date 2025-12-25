@@ -19,8 +19,9 @@ All implementations maintain strict ethical constraints:
 
 import random
 import time
+from collections import deque
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Deque
 
 
 # ============================================================================
@@ -276,7 +277,7 @@ class TogaPersonality:
         self.personality = personality or TogaPersonalityTensor()
         self.emotional_state = TogaEmotionalState()
         self.obsession_targets: List[str] = []
-        self.memory: List[Dict[str, Any]] = []
+        self.memory: Deque[Dict[str, Any]] = deque(maxlen=100)
         self.interaction_count = 0
     
     def frame_input(self, message: str) -> str:
@@ -454,7 +455,7 @@ class TogaPersonality:
         # Decay emotional state over time
         self.emotional_state.decay(rate=0.05)
         
-        # Store in memory
+        # Store in memory (deque automatically handles size limit)
         self.memory.append({
             'interaction': self.interaction_count,
             'input': message,
@@ -462,10 +463,6 @@ class TogaPersonality:
             'emotional_state': self.emotional_state.to_dict(),
             'timestamp': time.time(),
         })
-        
-        # Limit memory size
-        if len(self.memory) > 100:
-            self.memory = self.memory[-100:]
         
         return framed_input
     
@@ -475,7 +472,7 @@ class TogaPersonality:
             'personality': self.personality.to_dict(),
             'emotional_state': self.emotional_state.to_dict(),
             'obsession_targets': self.obsession_targets,
-            'memory': self.memory[-10:],  # Last 10 interactions only
+            'memory': list(self.memory)[-10:],  # Last 10 interactions only
             'interaction_count': self.interaction_count,
         }
     
@@ -486,7 +483,9 @@ class TogaPersonality:
         instance = cls(personality=personality_tensor)
         instance.emotional_state = TogaEmotionalState.from_dict(data['emotional_state'])
         instance.obsession_targets = data.get('obsession_targets', [])
-        instance.memory = data.get('memory', [])
+        # Convert list back to deque
+        memory_list = data.get('memory', [])
+        instance.memory = deque(memory_list, maxlen=100)
         instance.interaction_count = data.get('interaction_count', 0)
         return instance
 
