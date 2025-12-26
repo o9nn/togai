@@ -21,7 +21,31 @@ class TogaiFirebaseMessagingService : FirebaseMessagingService() {
     override fun onNewToken(token: String) {
         super.onNewToken(token)
         Log.i(TAG, "New FCM token: $token")
-        // TODO: Send token to server
+        
+        // Send token to server
+        sendTokenToServer(token)
+    }
+    
+    private fun sendTokenToServer(token: String) {
+        // Store token locally
+        getSharedPreferences("togai_prefs", MODE_PRIVATE)
+            .edit()
+            .putString("fcm_token", token)
+            .apply()
+        
+        // TODO: Implement server sync when backend is ready
+        // This should send the token to your backend server
+        // Example:
+        // CoroutineScope(Dispatchers.IO).launch {
+        //     try {
+        //         apiService.updateFcmToken(token)
+        //         Log.i(TAG, "Token sent to server successfully")
+        //     } catch (e: Exception) {
+        //         Log.e(TAG, "Failed to send token to server", e)
+        //     }
+        // }
+        
+        Log.i(TAG, "Token stored locally, server sync pending backend implementation")
     }
     
     override fun onMessageReceived(message: RemoteMessage) {
