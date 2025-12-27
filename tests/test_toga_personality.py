@@ -3,9 +3,9 @@
 Unit tests for Himiko Toga Personality System
 """
 
-import sys
-import os
 import json
+import os
+import sys
 import unittest
 from pathlib import Path
 
@@ -13,9 +13,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "python"))
 
 from helpers.toga_personality import (
-    TogaPersonalityTensor,
     TogaEmotionalState,
     TogaPersonality,
+    TogaPersonalityTensor,
     initialize_toga_personality,
 )
 

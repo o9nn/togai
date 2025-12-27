@@ -4,12 +4,13 @@ Tests for Toga Configuration Management
 
 import json
 import tempfile
+import unittest
 from pathlib import Path
-import pytest
-from python.helpers.toga_config import TogaConfig, ConfigManager
+
+from python.helpers.toga_config import ConfigManager, TogaConfig
 
 
-class TestTogaConfig:
+class TestTogaConfig(unittest.TestCase):
     """Test TogaConfig dataclass"""
 
     def test_default_initialization(self):
@@ -17,11 +18,11 @@ class TestTogaConfig:
         config = TogaConfig()
 
         # Test personality trait defaults
-        assert config.default_cheerfulness == 0.95
-        assert config.default_obsessiveness == 0.90
-        assert config.default_playfulness == 0.92
-        assert config.default_chaos == 0.95
-        assert config.default_vulnerability == 0.70
+        self.assertEqual(config.default_cheerfulness, 0.95)
+        self.assertEqual(config.default_obsessiveness, 0.90)
+        self.assertEqual(config.default_playfulness, 0.92)
+        self.assertEqual(config.default_chaos, 0.95)
+        self.assertEqual(config.default_vulnerability, 0.70)
 
     def test_custom_initialization(self):
         """Test TogaConfig with custom values"""
@@ -29,9 +30,9 @@ class TestTogaConfig:
             default_cheerfulness=0.80, default_obsessiveness=0.75, memory_max_size=200
         )
 
-        assert config.default_cheerfulness == 0.80
-        assert config.default_obsessiveness == 0.75
-        assert config.memory_max_size == 200
+        self.assertEqual(config.default_cheerfulness, 0.80)
+        self.assertEqual(config.default_obsessiveness, 0.75)
+        self.assertEqual(config.memory_max_size, 200)
 
     def test_trait_bounds(self):
         """Test that trait values are within valid bounds"""
@@ -49,19 +50,19 @@ class TestTogaConfig:
         ]
 
         for trait in traits:
-            assert 0.0 <= trait <= 1.0, f"Trait value {trait} out of bounds"
+            self.assertTrue(0.0 <= trait <= 1.0, f"Trait value {trait} out of bounds")
 
 
-class TestConfigManager:
+class TestConfigManager(unittest.TestCase):
     """Test ConfigManager functionality"""
 
     def test_get_default_config(self):
         """Test getting default configuration"""
         config = ConfigManager.get_default_config()
 
-        assert isinstance(config, TogaConfig)
-        assert config.default_cheerfulness == 0.95
-        assert config.memory_max_size == 100
+        self.assertTrue(isinstance(config, TogaConfig))
+        self.assertEqual(config.default_cheerfulness, 0.95)
+        self.assertEqual(config.memory_max_size, 100)
 
     def test_save_and_load_config(self):
         """Test saving and loading configuration to/from file"""
@@ -77,15 +78,15 @@ class TestConfigManager:
             ConfigManager.save_config(original_config, config_path)
 
             # Verify file exists
-            assert config_path.exists()
+            self.assertTrue(config_path.exists())
 
             # Load config
             loaded_config = ConfigManager.load_config(config_path)
 
             # Verify loaded config matches original
-            assert loaded_config.default_cheerfulness == 0.85
-            assert loaded_config.memory_max_size == 150
-            assert loaded_config.emotional_decay_rate == 0.03
+            self.assertEqual(loaded_config.default_cheerfulness, 0.85)
+            self.assertEqual(loaded_config.memory_max_size, 150)
+            self.assertEqual(loaded_config.emotional_decay_rate, 0.03)
 
     def test_load_nonexistent_config(self):
         """Test loading config from nonexistent file returns default"""
@@ -95,16 +96,16 @@ class TestConfigManager:
             config = ConfigManager.load_config(config_path)
 
             # Should return default config
-            assert isinstance(config, TogaConfig)
-            assert config.default_cheerfulness == 0.95
+            self.assertTrue(isinstance(config, TogaConfig))
+            self.assertEqual(config.default_cheerfulness, 0.95)
 
     def test_validate_config_valid(self):
         """Test validation of valid configuration"""
         config = TogaConfig()
         is_valid, errors = ConfigManager.validate_config(config)
 
-        assert is_valid
-        assert len(errors) == 0
+        self.assertTrue(is_valid)
+        self.assertEqual(len(errors), 0)
 
     def test_validate_config_invalid_traits(self):
         """Test validation catches invalid trait values"""
@@ -112,10 +113,10 @@ class TestConfigManager:
 
         is_valid, errors = ConfigManager.validate_config(config)
 
-        assert not is_valid
-        assert len(errors) > 0
-        assert any("cheerfulness" in error.lower() for error in errors)
-        assert any("obsessiveness" in error.lower() for error in errors)
+        self.assertTrue(not is_valid)
+        self.assertTrue(len(errors) > 0)
+        self.assertTrue(any("cheerfulness" in error.lower() for error in errors))
+        self.assertTrue(any("obsessiveness" in error.lower() for error in errors))
 
     def test_validate_config_invalid_memory(self):
         """Test validation catches invalid memory settings"""
@@ -123,8 +124,8 @@ class TestConfigManager:
 
         is_valid, errors = ConfigManager.validate_config(config)
 
-        assert not is_valid
-        assert any("memory" in error.lower() for error in errors)
+        self.assertTrue(not is_valid)
+        self.assertTrue(any("memory" in error.lower() for error in errors))
 
     def test_config_to_dict(self):
         """Test converting config to dictionary"""
@@ -132,9 +133,9 @@ class TestConfigManager:
 
         config_dict = ConfigManager.config_to_dict(config)
 
-        assert isinstance(config_dict, dict)
-        assert config_dict["default_cheerfulness"] == 0.88
-        assert config_dict["memory_max_size"] == 120
+        self.assertTrue(isinstance(config_dict, dict))
+        self.assertEqual(config_dict["default_cheerfulness"], 0.88)
+        self.assertEqual(config_dict["memory_max_size"], 120)
 
     def test_config_from_dict(self):
         """Test creating config from dictionary"""
@@ -146,10 +147,10 @@ class TestConfigManager:
 
         config = ConfigManager.config_from_dict(config_dict)
 
-        assert isinstance(config, TogaConfig)
-        assert config.default_cheerfulness == 0.82
-        assert config.default_obsessiveness == 0.77
-        assert config.memory_max_size == 130
+        self.assertTrue(isinstance(config, TogaConfig))
+        self.assertEqual(config.default_cheerfulness, 0.82)
+        self.assertEqual(config.default_obsessiveness, 0.77)
+        self.assertEqual(config.memory_max_size, 130)
 
     def test_merge_configs(self):
         """Test merging two configurations"""
@@ -160,10 +161,10 @@ class TestConfigManager:
         merged_config = ConfigManager.merge_configs(base_config, override_config)
 
         # Override values should be used
-        assert merged_config.default_cheerfulness == 0.85
-        assert merged_config.default_obsessiveness == 0.80
+        self.assertEqual(merged_config.default_cheerfulness, 0.85)
+        self.assertEqual(merged_config.default_obsessiveness, 0.80)
         # Base values should be preserved where not overridden
-        assert merged_config.memory_max_size == 100
+        self.assertEqual(merged_config.memory_max_size, 100)
 
     def test_config_serialization_roundtrip(self):
         """Test complete serialization roundtrip"""
@@ -181,10 +182,10 @@ class TestConfigManager:
         restored_config = ConfigManager.config_from_dict(config_dict)
 
         # Verify all values match
-        assert restored_config.default_cheerfulness == original_config.default_cheerfulness
-        assert restored_config.default_playfulness == original_config.default_playfulness
-        assert restored_config.memory_max_size == original_config.memory_max_size
-        assert restored_config.emotional_decay_rate == original_config.emotional_decay_rate
+        self.assertEqual(restored_config.default_cheerfulness, original_config.default_cheerfulness)
+        self.assertEqual(restored_config.default_playfulness, original_config.default_playfulness)
+        self.assertEqual(restored_config.memory_max_size, original_config.memory_max_size)
+        self.assertEqual(restored_config.emotional_decay_rate, original_config.emotional_decay_rate)
 
 
 if __name__ == "__main__":

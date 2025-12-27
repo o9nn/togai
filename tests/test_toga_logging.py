@@ -4,25 +4,26 @@ Tests for Toga Logging System
 
 import logging
 import tempfile
+import unittest
 from pathlib import Path
-import pytest
+
 from python.helpers.toga_logging import (
-    TogaLogger,
+    EmotionalStateLogger,
     InteractionLogger,
     PerformanceLogger,
-    EmotionalStateLogger,
+    TogaLogger,
 )
 
 
-class TestTogaLogger:
+class TestTogaLogger(unittest.TestCase):
     """Test TogaLogger basic functionality"""
 
     def test_initialization(self):
         """Test logger initialization"""
         logger = TogaLogger("test_logger")
 
-        assert logger.logger is not None
-        assert logger.logger.name == "test_logger"
+        self.assertTrue(logger.logger is not None)
+        self.assertEqual(logger.logger.name, "test_logger")
 
     def test_log_levels(self):
         """Test different log levels"""
@@ -36,7 +37,7 @@ class TestTogaLogger:
             logger.error("Error message")
 
             # Verify log file was created
-            assert log_file.exists()
+            self.assertTrue(log_file.exists())
 
     def test_log_with_context(self):
         """Test logging with context data"""
@@ -48,14 +49,14 @@ class TestTogaLogger:
         logger.info("Test message", context=context)
 
 
-class TestInteractionLogger:
+class TestInteractionLogger(unittest.TestCase):
     """Test InteractionLogger functionality"""
 
     def test_initialization(self):
         """Test interaction logger initialization"""
         logger = InteractionLogger()
 
-        assert logger.logger is not None
+        self.assertTrue(logger.logger is not None)
 
     def test_log_interaction(self):
         """Test logging user interaction"""
@@ -71,8 +72,8 @@ class TestInteractionLogger:
             )
 
             # Verify log file exists and has content
-            assert log_file.exists()
-            assert log_file.stat().st_size > 0
+            self.assertTrue(log_file.exists())
+            self.assertTrue(log_file.stat().st_size > 0)
 
     def test_log_interaction_with_metadata(self):
         """Test logging interaction with additional metadata"""
@@ -90,14 +91,14 @@ class TestInteractionLogger:
         )
 
 
-class TestPerformanceLogger:
+class TestPerformanceLogger(unittest.TestCase):
     """Test PerformanceLogger functionality"""
 
     def test_initialization(self):
         """Test performance logger initialization"""
         logger = PerformanceLogger()
 
-        assert logger.logger is not None
+        self.assertTrue(logger.logger is not None)
 
     def test_log_performance_metrics(self):
         """Test logging performance metrics"""
@@ -115,7 +116,7 @@ class TestPerformanceLogger:
             logger.log_metrics(metrics)
 
             # Verify log file exists
-            assert log_file.exists()
+            self.assertTrue(log_file.exists())
 
     def test_log_timing(self):
         """Test logging operation timing"""
@@ -132,14 +133,14 @@ class TestPerformanceLogger:
         logger.log_memory_usage(operation="test_operation", memory_mb=50.0)
 
 
-class TestEmotionalStateLogger:
+class TestEmotionalStateLogger(unittest.TestCase):
     """Test EmotionalStateLogger functionality"""
 
     def test_initialization(self):
         """Test emotional state logger initialization"""
         logger = EmotionalStateLogger()
 
-        assert logger.logger is not None
+        self.assertTrue(logger.logger is not None)
 
     def test_log_emotional_transition(self):
         """Test logging emotional state transition"""
@@ -156,7 +157,7 @@ class TestEmotionalStateLogger:
             )
 
             # Verify log file exists
-            assert log_file.exists()
+            self.assertTrue(log_file.exists())
 
     def test_log_emotional_state(self):
         """Test logging current emotional state"""
@@ -185,7 +186,7 @@ class TestEmotionalStateLogger:
         )
 
 
-class TestLoggerIntegration:
+class TestLoggerIntegration(unittest.TestCase):
     """Test integration between different loggers"""
 
     def test_multiple_loggers_same_file(self):
@@ -206,8 +207,8 @@ class TestLoggerIntegration:
             performance_logger.log_timing(operation="test", duration_ms=50.0)
 
             # Both should write successfully
-            assert log_file.exists()
-            assert log_file.stat().st_size > 0
+            self.assertTrue(log_file.exists())
+            self.assertTrue(log_file.stat().st_size > 0)
 
     def test_logger_hierarchy(self):
         """Test logger hierarchy and inheritance"""
@@ -215,7 +216,7 @@ class TestLoggerIntegration:
         child_logger = TogaLogger("parent.child")
 
         # Child logger should inherit from parent
-        assert child_logger.logger.parent.name == "parent"
+        self.assertEqual(child_logger.logger.parent.name, "parent")
 
 
 if __name__ == "__main__":
