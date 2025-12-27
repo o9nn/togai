@@ -1,7 +1,5 @@
 # 9mly
 
-# 9mly
-
 9mly is a sophisticated Android AI assistant application featuring advanced artificial intelligence, character animation, task automation, and comprehensive document processing capabilities. Built on a foundation of 188,678+ source files with 459 native library integrations.
 
 ## Features

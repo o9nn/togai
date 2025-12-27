@@ -46,7 +46,7 @@ Repository = "https://github.com/o9nn/togai"
 Issues = "https://github.com/o9nn/togai/issues"
 
 [project.scripts]
-togai-demo = "examples.demo_toga:main"
+togai-demo = "python.examples.demo_toga:main"
 
 [tool.black]
 line-length = 100
