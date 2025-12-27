@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.8"
 license = {text = "AGPL-3.0"}
 authors = [
-    {name = "o9nn", email = ""}
+    {name = "o9nn"}
 ]
 keywords = ["ai", "personality", "chatbot", "neuro-sama", "layla"]
 classifiers = [
