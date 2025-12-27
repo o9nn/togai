@@ -6,9 +6,9 @@ sentiment analysis, emotional context understanding, and empathetic response
 generation.
 """
 
-from typing import Dict, List, Tuple, Optional
 from dataclasses import dataclass
 from enum import Enum
+from typing import Dict, List, Optional, Tuple
 
 
 class EmotionCategory(Enum):
@@ -279,9 +279,7 @@ class EmotionalIntelligenceEngine:
 
         return list(set(keywords))[:10]  # Return up to 10 unique keywords
 
-    def generate_empathetic_response(
-        self, context: EmotionalContext
-    ) -> EmpatheticResponse:
+    def generate_empathetic_response(self, context: EmotionalContext) -> EmpatheticResponse:
         """
         Generate empathetic response based on emotional context.
 

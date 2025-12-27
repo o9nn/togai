@@ -21,8 +21,7 @@ import random
 import time
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Any, Deque
-
+from typing import Any, Deque, Dict, List, Optional
 
 # ============================================================================
 # PERSONALITY TENSOR - Core Trait System

@@ -6,19 +6,19 @@ This script benchmarks the performance of various Toga operations
 to ensure optimal performance in production environments.
 """
 
-import sys
 import os
-import time
 import statistics
+import sys
+import time
 from pathlib import Path
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from helpers.toga_personality import (
-    TogaPersonalityTensor,
     TogaEmotionalState,
     TogaPersonality,
+    TogaPersonalityTensor,
     initialize_toga_personality,
 )
 

@@ -6,20 +6,18 @@ This example demonstrates how to integrate the Toga personality system
 with the Layla character system and Neuro-Sama cognitive framework.
 """
 
-import sys
 import os
+import sys
 from pathlib import Path
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from helpers.toga_personality import (
-    TogaPersonality,
-    initialize_toga_personality,
-)
-from helpers.toga_config import load_config, create_default_config_file
-from helpers.toga_logging import get_logger
 import logging
+
+from helpers.toga_config import create_default_config_file, load_config
+from helpers.toga_logging import get_logger
+from helpers.toga_personality import TogaPersonality, initialize_toga_personality
 
 
 class LaylaTogaIntegration:

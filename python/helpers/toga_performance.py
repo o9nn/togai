@@ -5,10 +5,10 @@ This module provides performance optimization utilities including caching,
 memoization, and performance monitoring for the Toga personality system.
 """
 
-from functools import wraps, lru_cache
-from typing import Callable, Any, Dict, Optional, TypeVar, cast
-from time import time
 import sys
+from functools import lru_cache, wraps
+from time import time
+from typing import Any, Callable, Dict, Optional, TypeVar, cast
 
 T = TypeVar("T")
 
@@ -253,9 +253,7 @@ class BatchProcessor:
         self.batch_size = batch_size
 
     @timed("batch_process")
-    def process_batch(
-        self, items: list[Any], processor: Callable[[Any], Any]
-    ) -> list[Any]:
+    def process_batch(self, items: list[Any], processor: Callable[[Any], Any]) -> list[Any]:
         """
         Process items in batches.
 

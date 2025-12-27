@@ -5,12 +5,12 @@ This module provides a structured logging system for debugging and monitoring
 the Toga personality system in production environments.
 """
 
-import logging
 import json
+import logging
 import sys
-from pathlib import Path
-from typing import Optional, Dict, Any
 from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, Optional
 
 
 class TogaLogger:
@@ -239,7 +239,6 @@ def set_log_level(level: int):
 
     if _global_logger:
         _global_logger.logger.setLevel(level)
-
 
 
 class InteractionLogger(TogaLogger):

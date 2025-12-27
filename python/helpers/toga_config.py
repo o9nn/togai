@@ -6,9 +6,9 @@ parameters, emotional state settings, and system behavior.
 """
 
 import json
+from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Dict, Any, Optional
-from dataclasses import dataclass, asdict
+from typing import Any, Dict, Optional
 
 
 @dataclass
@@ -174,7 +174,7 @@ def create_default_config_file(filepath: Path) -> None:
 class ConfigManager:
     """
     Configuration manager for Toga personality system.
-    
+
     Provides utilities for managing, validating, and merging configurations.
     """
 
@@ -197,7 +197,7 @@ class ConfigManager:
     def validate_config(config: TogaConfig) -> tuple[bool, list[str]]:
         """
         Validate configuration values.
-        
+
         Returns:
             Tuple of (is_valid, list_of_errors)
         """
@@ -259,11 +259,11 @@ class ConfigManager:
     def merge_configs(base: TogaConfig, override: TogaConfig) -> TogaConfig:
         """
         Merge two configurations, with override taking precedence.
-        
+
         Args:
             base: Base configuration
             override: Override configuration
-            
+
         Returns:
             Merged configuration
         """

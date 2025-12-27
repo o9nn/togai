@@ -1,9 +1,9 @@
 """Helper modules for Toga personality implementation."""
 
 from .toga_personality import (
-    TogaPersonalityTensor,
     TogaEmotionalState,
     TogaPersonality,
+    TogaPersonalityTensor,
     initialize_toga_personality,
 )
 

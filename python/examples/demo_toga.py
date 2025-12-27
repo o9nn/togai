@@ -6,17 +6,17 @@ Comprehensive demonstration of the Toga personality implementation
 for Layla & Neuro-Sama integration.
 """
 
-import sys
-import os
 import json
+import os
+import sys
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from helpers.toga_personality import (
-    TogaPersonalityTensor,
     TogaEmotionalState,
     TogaPersonality,
+    TogaPersonalityTensor,
     initialize_toga_personality,
 )
 
