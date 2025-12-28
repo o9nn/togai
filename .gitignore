@@ -28,9 +28,6 @@ keystore.properties
 
 # Gradle
 .gradle/
-gradle-wrapper.jar
-gradlew
-gradlew.bat
 
 # Documentation build artifacts
 docs/.build/
