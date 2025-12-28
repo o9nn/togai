@@ -189,4 +189,4 @@ class TestConfigManager(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+    unittest.main()

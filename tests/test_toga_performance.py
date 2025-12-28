@@ -3,7 +3,7 @@ Tests for Toga Performance Module
 """
 
 import time
-import pytest
+import unittest
 from python.helpers.toga_performance import (
     PerformanceMonitor,
     get_performance_monitor,
@@ -18,13 +18,13 @@ from python.helpers.toga_performance import (
 )
 
 
-class TestPerformanceMonitor:
+class TestPerformanceMonitor(unittest.TestCase):
     """Test PerformanceMonitor class."""
 
     def test_initialization(self):
         """Test monitor initialization."""
         monitor = PerformanceMonitor()
-        assert monitor.metrics == {}
+        self.assertEqual(monitor.metrics, {})
 
     def test_record_timing_single(self):
         """Test recording a single timing."""
@@ -32,11 +32,11 @@ class TestPerformanceMonitor:
         monitor.record_timing("test_op", 100.0)
 
         metrics = monitor.get_metrics("test_op")
-        assert metrics["count"] == 1
-        assert metrics["total_ms"] == 100.0
-        assert metrics["min_ms"] == 100.0
-        assert metrics["max_ms"] == 100.0
-        assert metrics["avg_ms"] == 100.0
+        self.assertEqual(metrics["count"], 1)
+        self.assertEqual(metrics["total_ms"], 100.0)
+        self.assertEqual(metrics["min_ms"], 100.0)
+        self.assertEqual(metrics["max_ms"], 100.0)
+        self.assertEqual(metrics["avg_ms"], 100.0)
 
     def test_record_timing_multiple(self):
         """Test recording multiple timings for same operation."""
@@ -46,11 +46,11 @@ class TestPerformanceMonitor:
         monitor.record_timing("test_op", 150.0)
 
         metrics = monitor.get_metrics("test_op")
-        assert metrics["count"] == 3
-        assert metrics["total_ms"] == 450.0
-        assert metrics["min_ms"] == 100.0
-        assert metrics["max_ms"] == 200.0
-        assert metrics["avg_ms"] == 150.0
+        self.assertEqual(metrics["count"], 3)
+        self.assertEqual(metrics["total_ms"], 450.0)
+        self.assertEqual(metrics["min_ms"], 100.0)
+        self.assertEqual(metrics["max_ms"], 200.0)
+        self.assertEqual(metrics["avg_ms"], 150.0)
 
     def test_get_metrics_all(self):
         """Test getting all metrics."""
@@ -59,18 +59,18 @@ class TestPerformanceMonitor:
         monitor.record_timing("op2", 200.0)
 
         all_metrics = monitor.get_metrics()
-        assert len(all_metrics) == 2
-        assert "op1" in all_metrics
-        assert "op2" in all_metrics
+        self.assertEqual(len(all_metrics), 2)
+        self.assertIn("op1", all_metrics)
+        self.assertIn("op2", all_metrics)
 
     def test_reset(self):
         """Test resetting metrics."""
         monitor = PerformanceMonitor()
         monitor.record_timing("test_op", 100.0)
-        assert len(monitor.metrics) == 1
+        self.assertEqual(len(monitor.metrics), 1)
 
         monitor.reset()
-        assert len(monitor.metrics) == 0
+        self.assertEqual(len(monitor.metrics), 0)
 
     def test_get_summary(self):
         """Test summary generation."""
@@ -78,21 +78,21 @@ class TestPerformanceMonitor:
         monitor.record_timing("test_op", 100.0)
 
         summary = monitor.get_summary()
-        assert "Performance Metrics Summary" in summary
-        assert "test_op" in summary
+        self.assertIn("Performance Metrics Summary", summary)
+        self.assertIn("test_op", summary)
 
 
-class TestGlobalMonitor:
+class TestGlobalMonitor(unittest.TestCase):
     """Test global monitor functionality."""
 
     def test_get_global_monitor(self):
         """Test getting global monitor instance."""
         monitor1 = get_performance_monitor()
         monitor2 = get_performance_monitor()
-        assert monitor1 is monitor2
+        self.assertIs(monitor1, monitor2)
 
 
-class TestTimedDecorator:
+class TestTimedDecorator(unittest.TestCase):
     """Test timed decorator."""
 
     def test_timed_decorator_basic(self):
@@ -110,226 +110,226 @@ class TestTimedDecorator:
 
         try:
             result = test_func()
-            assert result == "result"
+            self.assertEqual(result, "result")
             metrics = monitor.get_metrics("test_function")
-            assert metrics["count"] == 1
-            assert metrics["avg_ms"] >= 10.0
+            self.assertEqual(metrics["count"], 1)
+            self.assertGreaterEqual(metrics["avg_ms"], 10.0)
         finally:
             perf_module._global_monitor = original_monitor
 
 
-class TestTraitCache:
+class TestTraitCache(unittest.TestCase):
     """Test TraitCache class."""
 
     def test_initialization(self):
         """Test cache initialization."""
         cache = TraitCache(max_size=10)
-        assert cache.max_size == 10
-        assert cache.size() == 0
+        self.assertEqual(cache.max_size, 10)
+        self.assertEqual(cache.size(), 0)
 
     def test_set_and_get(self):
         """Test setting and getting values."""
         cache = TraitCache()
         cache.set("key1", "value1")
-        
+
         value = cache.get("key1")
-        assert value == "value1"
+        self.assertEqual(value, "value1")
 
     def test_get_nonexistent(self):
         """Test getting non-existent key."""
         cache = TraitCache()
         value = cache.get("nonexistent")
-        assert value is None
+        self.assertIsNone(value)
 
     def test_clear(self):
         """Test clearing cache."""
         cache = TraitCache()
         cache.set("key1", "value1")
-        assert cache.size() == 1
-        
+        self.assertEqual(cache.size(), 1)
+
         cache.clear()
-        assert cache.size() == 0
+        self.assertEqual(cache.size(), 0)
 
     def test_size(self):
         """Test getting cache size."""
         cache = TraitCache()
-        assert cache.size() == 0
-        
+        self.assertEqual(cache.size(), 0)
+
         cache.set("key1", "value1")
-        assert cache.size() == 1
+        self.assertEqual(cache.size(), 1)
 
     def test_max_size_eviction(self):
         """Test LFU eviction when max size is reached."""
         cache = TraitCache(max_size=3)
-        
+
         cache.set("key1", "value1")
         cache.set("key2", "value2")
         cache.set("key3", "value3")
-        assert cache.size() == 3
-        
+        self.assertEqual(cache.size(), 3)
+
         cache.get("key2")
         cache.get("key3")
-        
+
         cache.set("key4", "value4")
-        assert cache.size() == 3
+        self.assertEqual(cache.size(), 3)
 
 
-class TestCachedTraitCalculation:
+class TestCachedTraitCalculation(unittest.TestCase):
     """Test cached_trait_calculation function."""
 
     def test_basic_calculation(self):
         """Test basic trait calculation."""
         result = cached_trait_calculation("test", 0.5, 0.2, 0.0, 1.0)
-        assert result == 0.7
+        self.assertEqual(result, 0.7)
 
     def test_min_bound(self):
         """Test minimum bound enforcement."""
         result = cached_trait_calculation("test", 0.2, -0.5, 0.0, 1.0)
-        assert result == 0.0
+        self.assertEqual(result, 0.0)
 
     def test_max_bound(self):
         """Test maximum bound enforcement."""
         result = cached_trait_calculation("test", 0.8, 0.5, 0.0, 1.0)
-        assert result == 1.0
+        self.assertEqual(result, 1.0)
 
     def test_caching(self):
         """Test that results are cached."""
         result1 = cached_trait_calculation("cached", 0.5, 0.2, 0.0, 1.0)
         result2 = cached_trait_calculation("cached", 0.5, 0.2, 0.0, 1.0)
-        assert result1 == result2
+        self.assertEqual(result1, result2)
 
 
-class TestGetMemoryUsage:
+class TestGetMemoryUsage(unittest.TestCase):
     """Test get_memory_usage function."""
 
     def test_memory_usage_returns_float(self):
         """Test that memory usage returns a float."""
         memory = get_memory_usage()
-        assert isinstance(memory, float)
-        assert memory >= 0.0
+        self.assertIsInstance(memory, float)
+        self.assertGreaterEqual(memory, 0.0)
 
 
-class TestBatchProcessor:
+class TestBatchProcessor(unittest.TestCase):
     """Test BatchProcessor class."""
 
     def test_initialization(self):
         """Test batch processor initialization."""
         processor = BatchProcessor(batch_size=5)
-        assert processor.batch_size == 5
+        self.assertEqual(processor.batch_size, 5)
 
     def test_process_batch(self):
         """Test batch processing."""
         processor = BatchProcessor(batch_size=3)
         items = [1, 2, 3, 4, 5, 6, 7]
-        
+
         def double(x):
             return x * 2
-        
+
         results = processor.process_batch(items, double)
-        assert results == [2, 4, 6, 8, 10, 12, 14]
+        self.assertEqual(results, [2, 4, 6, 8, 10, 12, 14])
 
     def test_process_empty_batch(self):
         """Test processing empty batch."""
         processor = BatchProcessor()
         results = processor.process_batch([], lambda x: x)
-        assert results == []
+        self.assertEqual(results, [])
 
 
-class TestOptimizeStringOperations:
+class TestOptimizeStringOperations(unittest.TestCase):
     """Test optimize_string_operations function."""
 
     def test_whitespace_normalization(self):
         """Test whitespace normalization."""
         text = "hello    world  \n  test"
         result = optimize_string_operations(text)
-        assert result == "hello world test"
+        self.assertEqual(result, "hello world test")
 
     def test_empty_string(self):
         """Test empty string handling."""
         result = optimize_string_operations("")
-        assert result == ""
+        self.assertEqual(result, "")
 
 
-class TestLazyEvaluator:
+class TestLazyEvaluator(unittest.TestCase):
     """Test LazyEvaluator class."""
 
     def test_lazy_computation(self):
         """Test that computation is deferred."""
         call_count = 0
-        
+
         def compute():
             nonlocal call_count
             call_count += 1
             return "computed"
-        
+
         evaluator = LazyEvaluator(compute)
-        assert call_count == 0
-        
+        self.assertEqual(call_count, 0)
+
         value = evaluator.value
-        assert value == "computed"
-        assert call_count == 1
+        self.assertEqual(value, "computed")
+        self.assertEqual(call_count, 1)
 
     def test_cached_value(self):
         """Test that value is cached after first computation."""
         call_count = 0
-        
+
         def compute():
             nonlocal call_count
             call_count += 1
             return "computed"
-        
+
         evaluator = LazyEvaluator(compute)
-        
+
         value1 = evaluator.value
         value2 = evaluator.value
-        
-        assert value1 == value2
-        assert call_count == 1
+
+        self.assertEqual(value1, value2)
+        self.assertEqual(call_count, 1)
 
     def test_reset(self):
         """Test resetting lazy evaluator."""
         call_count = 0
-        
+
         def compute():
             nonlocal call_count
             call_count += 1
             return call_count
-        
+
         evaluator = LazyEvaluator(compute)
-        
+
         value1 = evaluator.value
-        assert value1 == 1
-        
+        self.assertEqual(value1, 1)
+
         evaluator.reset()
-        
+
         value2 = evaluator.value
-        assert value2 == 2
-        assert call_count == 2
+        self.assertEqual(value2, 2)
+        self.assertEqual(call_count, 2)
 
 
-class TestGetOrCompilePattern:
+class TestGetOrCompilePattern(unittest.TestCase):
     """Test get_or_compile_pattern function."""
 
     def test_pattern_compilation(self):
         """Test pattern compilation."""
         pattern = get_or_compile_pattern(r"\d+")
-        assert pattern is not None
+        self.assertIsNotNone(pattern)
         match = pattern.search("test123")
-        assert match is not None
-        assert match.group() == "123"
+        self.assertIsNotNone(match)
+        self.assertEqual(match.group(), "123")
 
     def test_pattern_caching(self):
         """Test that patterns are cached."""
         pattern1 = get_or_compile_pattern(r"\d+")
         pattern2 = get_or_compile_pattern(r"\d+")
-        assert pattern1 is pattern2
+        self.assertIs(pattern1, pattern2)
 
     def test_case_insensitive(self):
         """Test case insensitive matching."""
         pattern = get_or_compile_pattern(r"test")
-        assert pattern.search("TEST") is not None
-        assert pattern.search("Test") is not None
+        self.assertIsNotNone(pattern.search("TEST"))
+        self.assertIsNotNone(pattern.search("Test"))
 
 
 if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+    unittest.main()
