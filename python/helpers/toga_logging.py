@@ -235,8 +235,6 @@ def set_log_level(level: int):
     Args:
         level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
     """
-    global _global_logger
-
     if _global_logger:
         _global_logger.logger.setLevel(level)
 
