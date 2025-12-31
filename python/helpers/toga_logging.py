@@ -39,7 +39,10 @@ class TogaLogger:
         """
         self.logger = logging.getLogger(name)
         self.logger.setLevel(level)
-        self.logger.handlers = []  # Clear existing handlers
+        # Close and clear existing handlers to prevent resource leaks
+        for handler in self.logger.handlers[:]:
+            handler.close()
+            self.logger.removeHandler(handler)
 
         # Create formatter
         formatter = logging.Formatter(
@@ -235,8 +238,6 @@ def set_log_level(level: int):
     Args:
         level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
     """
-    global _global_logger
-
     if _global_logger:
         _global_logger.logger.setLevel(level)
 
