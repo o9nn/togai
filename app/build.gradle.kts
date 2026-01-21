@@ -98,6 +98,14 @@ android {
         abortOnError = false
         checkReleaseBuilds = false
     }
+
+    // Configure CMake for native library builds
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.18.1"
+        }
+    }
 }
 
 dependencies {
