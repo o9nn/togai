@@ -76,11 +76,13 @@ Comprehensive technical architecture documentation is available in the [`/docs`]
 - **[🧠 Cognitive Computing Integration](./docs/COGNITIVE_COMPUTING.md)** - AI/ML architecture and cognitive capabilities
 - **[🔮 Causal Reasoning Engine](./docs/CAUSAL_REASONING_ENGINE.md)** - Pearl's causal hierarchy for cause-effect understanding
 - **[🌍 Planetary Neural Network](./docs/PLANETARY_NEURAL_NETWORK.md)** - Cities as attention heads in Earth's consciousness
+- **[⚡ Phase 2 ECAN Implementation](./docs/PHASE2_ECAN_IMPLEMENTATION.md)** - Economic attention allocation & resource kernel
 - **[📱 Manifest & Integration Details](./docs/MANIFEST_COGNITIVE_INTEGRATION.md)** - Android manifest analysis and system integration
 - **[📚 Reference Context](./docs/REFERENCE_CONTEXT.md)** - AI capabilities and implementation context
 - **[🗺️ Layla Development Roadmap](./docs/LAYLA_DEVELOPMENT_ROADMAP.md)** - Comprehensive feature roadmap derived from AndroidManifest.xml
 - **[🎭 Himiko Toga Character Agent](./.github/agents/toga.md)** - Cheerful yet chaotic personality from My Hero Academia
 - **[✅ Phase 1 Foundation Summary](./LAYLA_PHASE1_SUMMARY.md)** - Phase 1 implementation complete (6 services, 21 tests)
+- **[✅ Phase 2 ECAN Summary](./PHASE2_IMPLEMENTATION_SUMMARY.md)** - Phase 2 ECAN implementation complete (2,036 lines, 14 tests)
 - **[✅ Phase 2 Enhancement Summary](./LAYLA_PHASE2_SUMMARY.md)** - Phase 2 implementation complete (6 services, 62 tests)
 - **[✅ Phase 3 Integration Summary](./LAYLA_PHASE3_SUMMARY.md)** - Phase 3 implementation complete (5 services, 35 tests)
 - **[✅ Phase 4 Polish & Scale Summary](./LAYLA_PHASE4_SUMMARY.md)** - Phase 4 implementation complete (4 services)
@@ -96,8 +98,10 @@ Comprehensive technical architecture documentation is available in the [`/docs`]
 - **[⚙️ Smali Architecture Analyzer](./analyze_smali_architecture.py)** - Advanced smali code analysis tool
 
 ### 🎯 Demo Scripts
-- **[🚀 Phase 1 Demo](./layla_phase1_demo.sh)** - Interactive demo of foundation services
-- **[🚀 Phase 2 Demo](./layla_phase2_demo.sh)** - Interactive demo of enhancement features
+- **[🚀 Phase 1 Demo](./phase1_demo.sh)** - Cognitive primitives & hypergraph encoding
+- **[🚀 Phase 2 Demo](./phase2_demo.sh)** - ECAN attention allocation & resource kernel
+- **[🚀 Layla Phase 1 Demo](./layla_phase1_demo.sh)** - Interactive demo of foundation services
+- **[🚀 Layla Phase 2 Demo](./layla_phase2_demo.sh)** - Interactive demo of enhancement features
 - **[🔮 Causal Reasoning Demo](./causal_reasoning_demo.sh)** - Interactive demo of causal inference and counterfactual reasoning
 - **[🌍 Planetary Neural Network Demo](./planetary_neural_network_demo.sh)** - Demonstration of city-based attention network
 
