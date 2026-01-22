@@ -549,9 +549,7 @@ class CognitiveEngine {
             cycleHealth = calculatePhase5Health(introspectionResult, evolutionResult, verificationResult)
         )
     }
-    
-    }
-    
+
     // ========================================
     // Phase 6: Cognitive Unification Methods
     // ========================================
