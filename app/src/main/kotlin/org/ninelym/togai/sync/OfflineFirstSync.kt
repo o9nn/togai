@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.ninelym.togai.util.ErrorHandler
@@ -25,6 +26,8 @@ class OfflineFirstSync private constructor(
         private const val TAG = "OfflineFirstSync"
         private const val SYNC_WORK_NAME = "togai_sync_work"
         private const val SYNC_INTERVAL_MINUTES = 15L
+        private const val PREFS_NAME = "togai_sync_prefs"
+        private const val KEY_PENDING_OPERATIONS = "pending_operations"
         
         @Volatile
         private var instance: OfflineFirstSync? = null
@@ -284,16 +287,33 @@ class OfflineFirstSync private constructor(
      * Load pending operations from storage
      */
     private fun loadPendingOperations() {
-        // TODO: Load from persistent storage (Room database or MMKV)
-        // For now, operations are kept in memory
+        try {
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val jsonString = prefs.getString(KEY_PENDING_OPERATIONS, null)
+
+            if (!jsonString.isNullOrEmpty()) {
+                val items = json.decodeFromString<List<PendingSyncItem>>(jsonString)
+                pendingOperations.clear()
+                pendingOperations.addAll(items)
+                ErrorHandler.logDebug(TAG, "Loaded ${items.size} pending operations from storage")
+            }
+        } catch (e: Exception) {
+            ErrorHandler.logError(TAG, "Failed to load pending operations", e)
+        }
     }
     
     /**
      * Save pending operations to storage
      */
     private fun savePendingOperations() {
-        // TODO: Save to persistent storage (Room database or MMKV)
-        // For now, operations are kept in memory
+        try {
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val jsonString = json.encodeToString(pendingOperations.toList())
+            prefs.edit().putString(KEY_PENDING_OPERATIONS, jsonString).apply()
+            ErrorHandler.logDebug(TAG, "Saved ${pendingOperations.size} pending operations to storage")
+        } catch (e: Exception) {
+            ErrorHandler.logError(TAG, "Failed to save pending operations", e)
+        }
     }
     
     /**

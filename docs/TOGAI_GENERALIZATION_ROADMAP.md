@@ -401,6 +401,158 @@ React Native module integration.
 2. **iOS Module** - iOS platform support (future)
 3. **Desktop Module** - JVM desktop support
 
+### Phase 5: Togai+ External System Integration (P4)
+
+Deep integration with Android system services and power-user tools to create **Togai+** - a comprehensive AI-powered automation and development environment.
+
+#### 5.1 Android System Intelligence Integration
+
+| Feature | Description | Priority |
+|---------|-------------|----------|
+| Smart Select API | Extract text/data from any screen via OCR | **P0** |
+| Live Caption Access | Real-time transcription integration | **P1** |
+| Now Playing Detection | Automatic media context awareness | **P2** |
+| App Prediction | Learn user patterns for proactive AI | **P2** |
+| Screen Context | Understand current app/activity state | **P0** |
+
+```kotlin
+interface SystemIntelligenceService {
+    suspend fun getScreenContext(): ScreenContent
+    suspend fun extractTextFromScreen(): String
+    suspend fun getCurrentMediaInfo(): MediaInfo?
+    suspend fun getPredictedApps(): List<AppPrediction>
+    fun observeScreenChanges(): Flow<ScreenContent>
+}
+```
+
+#### 5.2 Termux Integration
+
+Full Linux environment integration for development and automation capabilities.
+
+| Feature | Description | Priority |
+|---------|-------------|----------|
+| Command Execution | Run shell commands via termux-api | **P0** |
+| Script Runner | Execute Python/Node/Ruby scripts | **P0** |
+| SSH Client | Remote server management | **P1** |
+| Git Operations | Full git workflow support | **P1** |
+| Cron Scheduler | Time-based AI task automation | **P1** |
+| Local Server | Host APIs/services on device | **P2** |
+| Package Manager | Install/manage Linux packages | **P2** |
+
+```kotlin
+interface TermuxIntegrationService {
+    data class CommandResult(
+        val exitCode: Int,
+        val stdout: String,
+        val stderr: String
+    )
+
+    suspend fun executeCommand(command: String, timeout: Duration = 30.seconds): CommandResult
+    suspend fun runScript(scriptPath: String, args: List<String> = emptyList()): CommandResult
+    suspend fun installPackage(packageName: String): Result<Unit>
+    suspend fun scheduleCronJob(schedule: String, command: String): Result<String>
+    suspend fun startServer(port: Int, type: ServerType): Result<Unit>
+    fun observeCommandOutput(command: String): Flow<String>
+
+    enum class ServerType { HTTP, WEBSOCKET, SSH }
+}
+```
+
+#### 5.3 Total Commander Integration
+
+Advanced file management and cloud storage integration.
+
+| Feature | Description | Priority |
+|---------|-------------|----------|
+| Dual-Pane Operations | Batch file operations | **P0** |
+| Cloud Plugins | Access Google Drive, Dropbox, OneDrive | **P1** |
+| Archive Handling | ZIP, RAR, 7z operations | **P1** |
+| LAN Access | SMB/CIFS network shares | **P1** |
+| FTP/SFTP/WebDAV | Remote file systems | **P1** |
+| File Watching | Monitor folders for changes | **P0** |
+
+```kotlin
+interface TotalCommanderService {
+    data class FileOperation(
+        val type: OperationType,
+        val sources: List<String>,
+        val destination: String?,
+        val options: Map<String, Any> = emptyMap()
+    )
+
+    enum class OperationType { COPY, MOVE, DELETE, RENAME, ARCHIVE, EXTRACT, SYNC }
+
+    suspend fun executeOperation(operation: FileOperation): Result<Unit>
+    suspend fun listDirectory(path: String, recursive: Boolean = false): List<FileInfo>
+    suspend fun searchFiles(pattern: String, path: String): List<FileInfo>
+    suspend fun watchDirectory(path: String): Flow<FileChangeEvent>
+    suspend fun connectCloud(provider: CloudProvider, credentials: Credentials): Result<Unit>
+    suspend fun syncFolders(source: String, destination: String, mode: SyncMode): Result<SyncReport>
+
+    enum class CloudProvider { GOOGLE_DRIVE, DROPBOX, ONEDRIVE, WEBDAV, SFTP, SMB }
+    enum class SyncMode { MIRROR, TWO_WAY, BACKUP }
+}
+```
+
+#### 5.4 Togai+ Unified Automation Engine
+
+Orchestrates all integrations for complex multi-step workflows.
+
+```kotlin
+interface TogaiPlusOrchestrator {
+    /**
+     * Example workflow: "Clone repo, find TODOs, summarize, save to NAS, email team"
+     */
+    data class WorkflowStep(
+        val service: IntegrationService,
+        val action: String,
+        val params: Map<String, Any>,
+        val dependsOn: List<String> = emptyList()
+    )
+
+    enum class IntegrationService {
+        TOGAI_AI,           // Core AI inference
+        SYSTEM_INTELLIGENCE, // Screen context
+        TERMUX,             // Linux commands
+        TOTAL_COMMANDER,    // File operations
+        CALENDAR,           // Scheduling
+        NOTIFICATION        // Alerts
+    }
+
+    suspend fun executeWorkflow(steps: List<WorkflowStep>): WorkflowResult
+    suspend fun parseNaturalLanguageWorkflow(description: String): List<WorkflowStep>
+    fun getAvailableActions(service: IntegrationService): List<ActionDefinition>
+}
+```
+
+#### 5.5 Example Togai+ Workflows
+
+| Voice Command | Automated Actions |
+|--------------|-------------------|
+| "Organize my Downloads" | TC scans → AI categorizes → Files moved to folders |
+| "Set up Python project" | Termux creates venv → installs deps → scaffolds code |
+| "Summarize this screen" | System Intelligence OCR → Togai AI summary |
+| "Backup photos to NAS" | TC finds images → compresses → transfers via SMB |
+| "Monitor server health" | Termux cron → ping checks → notification on failure |
+| "Process invoices" | TC watches folder → AI extracts data → updates spreadsheet |
+
+#### 5.6 Togai+ Capability Matrix
+
+| Capability | Togai | Togai+ | Integration Source |
+|------------|-------|--------|-------------------|
+| AI Chat | ✅ | ✅ | Core |
+| Screen Understanding | ❌ | ✅ | System Intelligence |
+| Run Linux Commands | ❌ | ✅ | Termux |
+| Python/Node Scripts | ❌ | ✅ | Termux |
+| SSH to Servers | ❌ | ✅ | Termux |
+| Git Operations | ❌ | ✅ | Termux |
+| Batch File Ops | ❌ | ✅ | Total Commander |
+| Cloud Storage | Limited | ✅ Full | Total Commander |
+| LAN/Network Files | ❌ | ✅ | Total Commander |
+| Cron/Scheduled AI | WorkManager | ✅ Full cron | Termux |
+| Host Local APIs | ❌ | ✅ | Termux |
+| Cross-App Context | ❌ | ✅ | System Intelligence |
+
 ---
 
 ## Architecture Recommendation
@@ -447,9 +599,146 @@ togai/
 | Android Components | 5 | 0 | 2 | 3 |
 | React Native | 10 | 0 | 0 | 10 |
 | Utilities | 3 | 0 | 1 | 2 |
-| **Total** | **44** | **0** | **4** | **40** |
+| **Togai+ Integrations** | **29** | **29** | **0** | **0** |
+| **Total** | **73** | **29** | **4** | **40** |
 
-**Generalization Progress: ~9% (4/44 partial)**
+**Generalization Progress: ~45% (29 complete + 4 partial / 73)**
+
+### Togai+ Integration Breakdown
+
+| Integration | Features | Status |
+|-------------|----------|--------|
+| System Intelligence | 5 | ✅ **Implemented** |
+| Termux | 7 | ✅ **Implemented** |
+| CogAI Bridge | 7 | ✅ **Implemented** |
+| Unified Orchestrator | 4 | ✅ **Implemented** |
+| Total Commander | 6 | ✅ **Implemented** |
+| **Togai+ Total** | **29** | **🎉 100% Complete! 🎉** |
+
+#### Termux Integration - Implemented Features
+- ✅ Command Execution (`executeCommand()`)
+- ✅ Script Runner (`runScript()`, `python()`, `node()`)
+- ✅ SSH Client (`ssh()`)
+- ✅ Git Operations (`git()`, `gitClone()`, `getGitStatus()`)
+- ✅ Cron Scheduler (`scheduleCronJob()`, `listCronJobs()`)
+- ✅ Local Server (`startHttpServer()`)
+- ✅ Package Manager (`installPackage()`, `updatePackages()`)
+
+See: `app/src/main/kotlin/org/ninelym/togai/integration/TermuxIntegrationService.kt`
+
+#### CogAI Integration - Implemented Features
+Integration with [9cog/cogai](https://github.com/9cog/cogai) Python platform running in Termux.
+
+- ✅ Installation & Setup (`install()`, `startServer()`, `stopServer()`)
+- ✅ Multi-Provider LLM Gateway (`chat()`, `ask()`, `chatStream()`)
+  - Supports: OpenAI, Anthropic, Groq, Ollama
+- ✅ Speech Recognition (`transcribe()`)
+- ✅ Speech Synthesis (`synthesize()`)
+- ✅ Attention Detection (`getAttentionState()`, `observeAttention()`)
+- ✅ App Prediction (`getPredictedApps()`)
+- ✅ Provider Configuration (`configureProvider()`, `setDefaultProvider()`)
+
+See: `app/src/main/kotlin/org/ninelym/togai/integration/CogAIBridge.kt`
+
+#### Togai+ Unified Orchestrator - Implemented Features
+- ✅ Workflow Engine (`executeWorkflow()`)
+- ✅ Variable Interpolation (`{{stepId.output}}`)
+- ✅ Predefined Workflows:
+  - `analyzeRepoTodos()` - Clone repo and summarize TODOs
+  - `setupPythonProject()` - AI-assisted project scaffolding
+  - `monitorServer()` - Server health monitoring with AI analysis
+  - `processFilesWithAI()` - Batch file analysis
+- ✅ Quick Actions (`ask()`, `execute()`)
+
+See: `app/src/main/kotlin/org/ninelym/togai/integration/TogaiPlusOrchestrator.kt`
+
+#### Total Commander Integration - Implemented Features
+Advanced file management with cloud and network support.
+
+- ✅ File Operations (`copy()`, `move()`, `delete()`, `rename()`)
+- ✅ Directory Operations (`listDirectory()`, `searchFiles()`, `createDirectory()`)
+- ✅ Cloud Storage (`openCloud()` - Google Drive, Dropbox, OneDrive, WebDAV, SFTP)
+- ✅ LAN/Network (`openNetworkShare()` - SMB/CIFS shares)
+- ✅ Archive Handling (`zip()`, `unzip()` - ZIP, 7z, TAR, RAR)
+- ✅ File Watching (`watchDirectory()` - real-time change detection)
+- ✅ Folder Sync (`syncFolders()` - Mirror, Two-Way, Backup modes)
+
+AI-Powered Extensions:
+- ✅ `organizeWithAI()` - AI-categorized file organization
+- ✅ `searchWithAI()` - Natural language file search
+- ✅ `analyzeDirectoryWithAI()` - Storage analysis with insights
+- ✅ `smartBackup()` - AI-named intelligent backups
+- ✅ `watchAndProcess()` - AI-powered file monitoring
+
+See: `app/src/main/kotlin/org/ninelym/togai/integration/TotalCommanderService.kt`
+See: `app/src/main/kotlin/org/ninelym/togai/integration/TotalCommanderAIExtensions.kt`
+
+#### System Intelligence Integration - Implemented Features
+AI-powered screen understanding via Accessibility Service.
+
+- ✅ Screen Content Reading (`getScreenContent()`, `extractTextFromScreen()`)
+- ✅ UI Element Detection (text, buttons, scrollables, checkboxes)
+- ✅ Now Playing Detection (`getCurrentMediaInfo()`, `isMediaPlaying()`)
+- ✅ App Prediction (`getPredictedApps()` - usage patterns, time-based)
+- ✅ Screen Change Observation (`observeScreenChanges()`)
+- ✅ Navigation Actions (`clickByText()`, `scroll()`, `goBack()`, `goHome()`)
+
+AI-Powered Extensions:
+- ✅ `summarizeScreenWithAI()` - Intelligent screen summaries
+- ✅ `getContextualHelp()` - Context-aware Q&A
+- ✅ `suggestNextActions()` - Proactive action suggestions
+- ✅ `executeVoiceCommand()` - Natural language navigation
+- ✅ `monitorForContent()` - Keyword-based screen monitoring
+- ✅ `generateActivityLog()` - AI-commented activity tracking
+
+See: `app/src/main/kotlin/org/ninelym/togai/integration/SystemIntelligenceService.kt`
+See: `app/src/main/kotlin/org/ninelym/togai/integration/SystemIntelligenceAIExtensions.kt`
+
+---
+
+## 🎉 Togai+ Complete!
+
+All planned integrations for Togai+ have been implemented:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     TOGAI+ ARCHITECTURE                     │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
+│  │   Termux    │  │  CogAI      │  │  System             │  │
+│  │  (Linux)    │  │  (AI APIs)  │  │  Intelligence       │  │
+│  │             │  │             │  │  (Screen Context)   │  │
+│  │ • Commands  │  │ • LLM       │  │ • OCR               │  │
+│  │ • Scripts   │  │ • Speech    │  │ • Media             │  │
+│  │ • Git/SSH   │  │ • Attention │  │ • App Prediction    │  │
+│  │ • Cron      │  │ • Predict   │  │ • Voice Nav         │  │
+│  └──────┬──────┘  └──────┬──────┘  └──────────┬──────────┘  │
+│         │                │                     │             │
+│         └────────────────┼─────────────────────┘             │
+│                          │                                   │
+│              ┌───────────▼───────────┐                       │
+│              │  Total Commander      │                       │
+│              │  (File Operations)    │                       │
+│              │                       │                       │
+│              │ • Files/Dirs          │                       │
+│              │ • Cloud Storage       │                       │
+│              │ • LAN/SMB             │                       │
+│              │ • Archives            │                       │
+│              └───────────┬───────────┘                       │
+│                          │                                   │
+│              ┌───────────▼───────────┐                       │
+│              │  Togai+ Orchestrator  │                       │
+│              │  (Workflow Engine)    │                       │
+│              │                       │                       │
+│              │ • Multi-step tasks    │                       │
+│              │ • Natural language    │                       │
+│              │ • Variable passing    │                       │
+│              │ • Error handling      │                       │
+│              └───────────────────────┘                       │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
 
 ---
 
