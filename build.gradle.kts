@@ -19,14 +19,7 @@ plugins {
     kotlin("plugin.serialization") version "1.9.25" apply false
 }
 
-allprojects {
-    repositories {
-        google()
-        mavenCentral()
-        maven { url = uri("https://jitpack.io") }
-        maven { url = uri("https://maven.google.com") }
-    }
-}
+// Repositories are centralized in settings.gradle.kts via dependencyResolutionManagement
 
 tasks.register("clean", Delete::class) {
     delete(rootProject.layout.buildDirectory)
