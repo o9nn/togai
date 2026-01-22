@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "org.ninelym"
+    namespace = "org.ninelym.togai"
     compileSdk = 34
 
     defaultConfig {
