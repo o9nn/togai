@@ -20,10 +20,18 @@
     <!-- Togai+ Termux Integration -->
     <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
 
-    <!-- Package visibility for Termux (Android 11+) -->
+    <!-- Package visibility for Togai+ integrations (Android 11+) -->
     <queries>
+        <!-- Termux -->
         <package android:name="com.termux" />
         <package android:name="com.termux.api" />
+        <!-- Total Commander and plugins -->
+        <package android:name="com.ghisler.android.TotalCommander" />
+        <package android:name="com.ghisler.tcplugins.GoogleDrive" />
+        <package android:name="com.ghisler.tcplugins.Dropbox" />
+        <package android:name="com.ghisler.tcplugins.OneDrive" />
+        <package android:name="com.ghisler.tcplugins.WebDAV" />
+        <package android:name="com.ghisler.tcplugins.SFTP" />
     </queries>
     
     <!-- Hardware features -->
