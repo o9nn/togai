@@ -3,6 +3,8 @@ package org.ninelym.cognitive
 import org.ninelym.cognitive.hypergraph.Hypergraph
 import org.ninelym.cognitive.hypergraph.Atom
 import org.ninelym.cognitive.hypergraph.AtomType
+import org.ninelym.cognitive.hypergraph.TruthValue
+import org.ninelym.cognitive.hypergraph.AttentionValue
 import org.ninelym.cognitive.scheme.SchemeCognitiveGrammar
 import org.ninelym.cognitive.tensor.TensorFragmentProcessor
 import org.ninelym.cognitive.verification.CognitiveVerificationSystem
@@ -81,7 +83,40 @@ class CognitiveEngine {
             ProcessingResult.failure("Failed to process expression: ${e.message}")
         }
     }
-    
+
+    /**
+     * Construct an Atom from individual fields and add it to the hypergraph
+     */
+    fun addAtom(
+        id: String,
+        type: AtomType,
+        name: String,
+        truthStrength: Float,
+        truthConfidence: Float,
+        attentionSTI: Float,
+        attentionLTI: Float
+    ): ProcessingResult {
+        val atom = Atom(
+            id = id,
+            type = type,
+            name = name,
+            truthValue = TruthValue(strength = truthStrength, confidence = truthConfidence),
+            attentionValue = AttentionValue(sti = attentionSTI, lti = attentionLTI)
+        )
+        return try {
+            if (hypergraph.addAtom(atom)) {
+                ProcessingResult.success(
+                    message = "Added atom ${atom.id}",
+                    atoms = listOf(atom)
+                )
+            } else {
+                ProcessingResult.failure("Atom with id ${atom.id} already exists")
+            }
+        } catch (e: Exception) {
+            ProcessingResult.failure("Failed to add atom ${atom.id}: ${e.message}")
+        }
+    }
+
     /**
      * Convert hypergraph atoms back to Scheme expression
      */
