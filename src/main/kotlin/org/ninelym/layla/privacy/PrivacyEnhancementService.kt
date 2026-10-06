@@ -252,7 +252,7 @@ class PrivacyEnhancementService {
             filtered = filtered.filter { it.action == action }
         }
         
-        return filtered.takeLast(limit).toList()
+        return filtered.toList().takeLast(limit)
     }
     
     /**
@@ -294,13 +294,14 @@ class PrivacyEnhancementService {
             recommendations.add("Disable analytics for maximum privacy")
         }
         
-        val complianceScore = maxOf(0, 100 - (issues.sumOf { 
+        val severityPenalty: (ComplianceIssue) -> Int = {
             when (it.severity) {
                 Severity.HIGH -> 30
                 Severity.MEDIUM -> 15
                 Severity.LOW -> 5
             }
-        }))
+        }
+        val complianceScore = maxOf(0, 100 - issues.sumOf(severityPenalty))
         
         return PrivacyComplianceReport(
             complianceScore = complianceScore,
