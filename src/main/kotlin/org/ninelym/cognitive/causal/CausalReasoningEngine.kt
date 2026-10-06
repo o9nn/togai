@@ -457,7 +457,7 @@ class CausalReasoningEngine(
         causalGraph.nodes.forEach { node ->
             val atom = Atom(
                 id = "$namespace:concept:$node",
-                type = AtomType.CONCEPT_NODE,
+                type = AtomType.CONCEPT,
                 name = node,
                 truthValue = causalGraph.confidence
             )
@@ -472,7 +472,7 @@ class CausalReasoningEngine(
                 val strength = causalGraph.strengths[Pair(cause, effect)] ?: 0.5f
                 val atom = Atom(
                     id = "$namespace:causes:$cause:$effect",
-                    type = AtomType.EVALUATION_LINK,
+                    type = AtomType.EVALUATION,
                     name = "causes",
                     truthValue = strength
                 )
