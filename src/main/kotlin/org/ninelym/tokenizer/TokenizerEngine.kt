@@ -159,7 +159,7 @@ class BPETokenizer(
     }
 
     override fun decode(tokens: IntArray): String {
-        return tokens
+        return tokens.asIterable()
             .mapNotNull { reverseVocab[it] }
             .joinToString("")
             .replace("Ġ", " ")
@@ -272,7 +272,7 @@ class SentencePieceTokenizer(
     }
 
     override fun decode(tokens: IntArray): String {
-        return tokens
+        return tokens.asIterable()
             .mapNotNull { reverseVocab[it] }
             .joinToString("")
             .replace("▁", " ")
