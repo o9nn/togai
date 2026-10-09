@@ -283,7 +283,7 @@ class CognitiveConsistencyVerifier(
     }
     
     private fun verifyECANIntegrity(): Float {
-        val stats = ecanKernel.getStats()
+        val stats = computeECANStats(hypergraph, ecanKernel)
         
         // Check STI/LTI consistency
         val stiConsistency = if (stats.totalSTI >= stats.averageSTI) 1.0f else 0.5f
@@ -301,8 +301,9 @@ class CognitiveConsistencyVerifier(
         // Check self-awareness bounds
         val selfAwarenessValidity = if (insights.systemSelfAwareness >= 0.0f && insights.systemSelfAwareness <= 1.0f) 1.0f else 0.0f
         
-        // Check processing efficiency bounds  
-        val efficiencyValidity = if (insights.processingEfficiency >= 0.0f && insights.processingEfficiency <= 1.0f) 1.0f else 0.0f
+        // Check processing efficiency bounds
+        val processingEfficiency = metaSystem.getLatestIntrospection()?.processingEfficiency ?: 0.5f
+        val efficiencyValidity = if (processingEfficiency >= 0.0f && processingEfficiency <= 1.0f) 1.0f else 0.0f
         
         // Check cognitive rule count validity
         val ruleCountValidity = if (insights.cognitiveRuleCount >= 0) 1.0f else 0.0f

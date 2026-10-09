@@ -245,7 +245,7 @@ class QuantumInspiredOptimizer(
         val normalizedAllocation = normalizeAllocation(result.solution, resourceBudget)
         
         return AttentionAllocationResult(
-            atomAllocations = atoms.zip(normalizedAllocation).toMap(),
+            atomAllocations = atoms.zip(normalizedAllocation.toList()).toMap(),
             totalImportance = result.fitness,
             convergenceGenerations = result.generations
         )

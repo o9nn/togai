@@ -134,21 +134,26 @@ sealed interface OperationResult<out T> {
         is Success -> value
         is Failure -> throw OperationException(error)
     }
-    
-    inline fun <R> map(transform: (T) -> R): OperationResult<R> = when (this) {
-        is Success -> Success(transform(value))
-        is Failure -> this
-    }
-    
-    inline fun onSuccess(action: (T) -> Unit): OperationResult<T> {
-        if (this is Success) action(value)
-        return this
-    }
-    
-    inline fun onFailure(action: (OperationError) -> Unit): OperationResult<T> {
-        if (this is Failure) action(error)
-        return this
-    }
+}
+
+// Declared as top-level extension functions rather than interface members:
+// `inline` is not permitted on virtual (open) interface members in Kotlin,
+// since inlining requires the exact body to be known at the call site.
+// Call-site syntax (e.g. `result.map { ... }`) is unaffected by this move.
+
+inline fun <T, R> OperationResult<T>.map(transform: (T) -> R): OperationResult<R> = when (this) {
+    is OperationResult.Success -> OperationResult.Success(transform(value))
+    is OperationResult.Failure -> this
+}
+
+inline fun <T> OperationResult<T>.onSuccess(action: (T) -> Unit): OperationResult<T> {
+    if (this is OperationResult.Success) action(value)
+    return this
+}
+
+inline fun <T> OperationResult<T>.onFailure(action: (OperationError) -> Unit): OperationResult<T> {
+    if (this is OperationResult.Failure) action(error)
+    return this
 }
 
 /**

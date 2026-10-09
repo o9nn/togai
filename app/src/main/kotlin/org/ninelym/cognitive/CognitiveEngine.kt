@@ -7,6 +7,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import org.ninelym.cognitive.hypergraph.Hypergraph
 import org.ninelym.cognitive.hypergraph.Atom
 import org.ninelym.cognitive.hypergraph.AtomType
+import org.ninelym.cognitive.hypergraph.TruthValue
+import org.ninelym.cognitive.hypergraph.AttentionValue
+import org.ninelym.cognitive.hypergraph.HyperLink
+import org.ninelym.cognitive.hypergraph.LinkType
 import org.ninelym.cognitive.scheme.SchemeCognitiveGrammar
 import org.ninelym.cognitive.tensor.TensorFragmentProcessor
 import org.ninelym.cognitive.verification.CognitiveVerificationSystem
@@ -85,7 +89,67 @@ class CognitiveEngine {
             ProcessingResult.failure("Failed to process expression: ${e.message}")
         }
     }
-    
+
+    /**
+     * Construct an Atom from individual fields and add it to the hypergraph
+     */
+    fun addAtom(
+        id: String,
+        type: AtomType,
+        name: String,
+        truthStrength: Float,
+        truthConfidence: Float,
+        attentionSTI: Float,
+        attentionLTI: Float
+    ): ProcessingResult {
+        val atom = Atom(
+            id = id,
+            type = type,
+            name = name,
+            truthValue = TruthValue(strength = truthStrength, confidence = truthConfidence),
+            attentionValue = AttentionValue(sti = attentionSTI, lti = attentionLTI)
+        )
+        return try {
+            if (hypergraph.addAtom(atom)) {
+                ProcessingResult.success(
+                    message = "Added atom ${atom.id}",
+                    atoms = listOf(atom)
+                )
+            } else {
+                ProcessingResult.failure("Atom with id ${atom.id} already exists")
+            }
+        } catch (e: Exception) {
+            ProcessingResult.failure("Failed to add atom ${atom.id}: ${e.message}")
+        }
+    }
+
+    /**
+     * Link two existing atoms with a named relation. The label is kept in the
+     * link id; EVALUATION is the default type because an EvaluationLink is a
+     * predicate-labelled relation between atoms.
+     */
+    fun addLink(
+        sourceId: String,
+        targetId: String,
+        label: String,
+        type: LinkType = LinkType.EVALUATION
+    ): ProcessingResult {
+        val link = HyperLink(
+            id = "$label:$sourceId:$targetId",
+            type = type,
+            targets = listOf(sourceId, targetId)
+        )
+        return if (hypergraph.addLink(link)) {
+            ProcessingResult.success(message = "Linked $sourceId -[$label]-> $targetId")
+        } else {
+            ProcessingResult.failure("Cannot link $sourceId -> $targetId: both atoms must exist")
+        }
+    }
+
+    fun runAttentionCycle(): org.ninelym.cognitive.ecan.AttentionAllocationResult {
+        return ecanKernel.runAttentionCycle()
+    }
+
     /**
      * Convert hypergraph atoms back to Scheme expression
      */

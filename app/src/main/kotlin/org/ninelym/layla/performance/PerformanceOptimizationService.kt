@@ -81,7 +81,7 @@ class PerformanceOptimizationService {
     /**
      * Cache management with TTL support
      */
-    fun <T> cache(key: String, value: T, ttlMs: Long = 300000) { // 5 min default
+    fun <T : Any> cache(key: String, value: T, ttlMs: Long = 300000) { // 5 min default
         memoryCache[key] = CacheEntry(
             value = value,
             timestamp = System.currentTimeMillis(),
@@ -186,7 +186,8 @@ class PerformanceOptimizationService {
     /**
      * Record performance snapshot
      */
-    private fun recordSnapshot(operationName: String, executionTimeMs: Long, memoryDeltaBytes: Long) {
+    @PublishedApi
+    internal fun recordSnapshot(operationName: String, executionTimeMs: Long, memoryDeltaBytes: Long) {
         performanceHistory.add(PerformanceSnapshot(
             timestamp = System.currentTimeMillis(),
             operationName = operationName,
