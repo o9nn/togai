@@ -32,32 +32,34 @@ class IntegrationVerificationSystem(
         println("🔍 Starting Phase 4 Integration Verification...")
         
         val startTime = System.currentTimeMillis()
-        
+
         // Run all test suites in parallel
-        val apiTests = async { runAPITests() }
-        val embodimentTests = async { runEmbodimentTests() }
-        val performanceTests = async { runPerformanceTests() }
-        val healthChecks = async { runHealthChecks() }
-        
-        // Collect all results
-        val apiResults = apiTests.await()
-        val embodimentResults = embodimentTests.await()
-        val performanceResults = performanceTests.await()
-        val healthResults = healthChecks.await()
-        
-        val totalTime = System.currentTimeMillis() - startTime
-        
-        // Generate comprehensive report
-        return IntegrationVerificationReport(
-            timestamp = System.currentTimeMillis(),
-            totalExecutionTime = totalTime,
-            apiTestResults = apiResults,
-            embodimentTestResults = embodimentResults,
-            performanceResults = performanceResults,
-            healthCheckResults = healthResults,
-            overallHealth = calculateOverallHealth(apiResults, embodimentResults, performanceResults, healthResults),
-            recommendations = generateRecommendations()
-        )
+        return coroutineScope {
+            val apiTests = async { runAPITests() }
+            val embodimentTests = async { runEmbodimentTests() }
+            val performanceTests = async { runPerformanceTests() }
+            val healthChecksDeferred = async { runHealthChecks() }
+
+            // Collect all results
+            val apiResults = apiTests.await()
+            val embodimentResults = embodimentTests.await()
+            val performanceResults = performanceTests.await()
+            val healthResults = healthChecksDeferred.await()
+
+            val totalTime = System.currentTimeMillis() - startTime
+
+            // Generate comprehensive report
+            IntegrationVerificationReport(
+                timestamp = System.currentTimeMillis(),
+                totalExecutionTime = totalTime,
+                apiTestResults = apiResults,
+                embodimentTestResults = embodimentResults,
+                performanceResults = performanceResults,
+                healthCheckResults = healthResults,
+                overallHealth = calculateOverallHealth(apiResults, embodimentResults, performanceResults, healthResults),
+                recommendations = generateRecommendations()
+            )
+        }
     }
     
     /**
@@ -66,7 +68,7 @@ class IntegrationVerificationSystem(
     private suspend fun runAPITests(): APITestResults {
         println("  📡 Testing API endpoints...")
         
-        val tests = mapOf(
+        val tests: Map<String, suspend () -> Boolean> = mapOf(
             "mesh_status" to { testMeshStatus() },
             "agent_registration" to { testAgentRegistration() },
             "sensor_data_submission" to { testSensorDataSubmission() },

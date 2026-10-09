@@ -263,11 +263,8 @@ class MultimodalOrchestrator(
      */
     private suspend fun processQuantum(request: MultimodalRequest): QuantumResult {
         // Create cognitive tensor from request
-        val tensor = CognitiveTensor(
-            id = "quantum_${System.currentTimeMillis()}",
-            values = FloatArray(64) { Math.random().toFloat() },
-            dimensions = listOf(8, 8),
-            timestamp = System.currentTimeMillis()
+        val tensor = CognitiveTensor.fromArray(
+            FloatArray(CognitiveTensor.TENSOR_DIMENSIONS) { Math.random().toFloat() }
         )
         
         val quantumResult = quantumProcessor.processQuantum(tensor)

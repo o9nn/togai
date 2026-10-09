@@ -3,6 +3,7 @@ package org.ninelym.cognitive.causal
 import org.ninelym.cognitive.hypergraph.Hypergraph
 import org.ninelym.cognitive.hypergraph.Atom
 import org.ninelym.cognitive.hypergraph.AtomType
+import org.ninelym.cognitive.hypergraph.TruthValue
 import kotlin.math.abs
 import kotlin.math.sqrt
 
@@ -457,9 +458,9 @@ class CausalReasoningEngine(
         causalGraph.nodes.forEach { node ->
             val atom = Atom(
                 id = "$namespace:concept:$node",
-                type = AtomType.CONCEPT_NODE,
+                type = AtomType.CONCEPT,
                 name = node,
-                truthValue = causalGraph.confidence
+                truthValue = TruthValue(strength = 1.0f, confidence = causalGraph.confidence)
             )
             if (hypergraph.addAtom(atom)) {
                 addedAtoms++
@@ -472,9 +473,9 @@ class CausalReasoningEngine(
                 val strength = causalGraph.strengths[Pair(cause, effect)] ?: 0.5f
                 val atom = Atom(
                     id = "$namespace:causes:$cause:$effect",
-                    type = AtomType.EVALUATION_LINK,
+                    type = AtomType.EVALUATION,
                     name = "causes",
-                    truthValue = strength
+                    truthValue = TruthValue(strength = strength, confidence = causalGraph.confidence)
                 )
                 if (hypergraph.addAtom(atom)) {
                     addedAtoms++

@@ -1,6 +1,7 @@
 package org.ninelym.cognitive.neuroplasticity
 
 import org.ninelym.cognitive.hypergraph.Hypergraph
+import kotlin.math.abs
 import kotlin.math.exp
 
 /**

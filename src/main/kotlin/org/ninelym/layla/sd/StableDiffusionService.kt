@@ -13,7 +13,9 @@ import java.util.concurrent.ConcurrentHashMap
  * Provides text-to-image generation capabilities using local Stable Diffusion models.
  * Integrates with existing LocalImageGenerator for on-device processing.
  */
-class StableDiffusionService {
+class StableDiffusionService(
+    private val outputDir: File = File(System.getProperty("java.io.tmpdir"), "togai-sd")
+) {
     
     private val imageGenerator = LocalImageGenerator()
     private val generationHistory = mutableListOf<GenerationRecord>()
@@ -69,12 +71,15 @@ class StableDiffusionService {
             // Generate image using LocalImageGenerator
             val result = imageGenerator.generateImage(prompt, style, null)
             
-            val generatedImage = when {
-                result.isSuccess() -> {
+            val generatedImage = when (result) {
+                is ImageGenerationResult.Success -> {
+                    outputDir.mkdirs()
+                    val imageFile = File(outputDir, "$taskId.png")
+                    imageFile.writeBytes(result.image.imageData)
                     val image = GeneratedImage(
                         id = taskId,
                         prompt = prompt,
-                        imagePath = result.image?.path ?: "",
+                        imagePath = imageFile.absolutePath,
                         timestamp = System.currentTimeMillis(),
                         style = style,
                         model = currentModel?.name ?: "default"
@@ -95,9 +100,9 @@ class StableDiffusionService {
                     activeGenerations.remove(taskId)
                     Result.success(image)
                 }
-                else -> {
+                is ImageGenerationResult.Error -> {
                     activeGenerations.remove(taskId)
-                    Result.failure(Exception("Image generation failed: ${result.error}"))
+                    Result.failure(Exception("Image generation failed: ${result.message}"))
                 }
             }
             
@@ -177,10 +182,6 @@ class StableDiffusionService {
     
     private fun generateTaskId(): String {
         return "gen_${System.currentTimeMillis()}_${(Math.random() * 10000).toInt()}"
-    }
-    
-    private fun ImageGenerationResult.isSuccess(): Boolean {
-        return this.image != null
     }
 }
 

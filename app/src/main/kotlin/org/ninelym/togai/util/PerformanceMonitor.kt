@@ -15,9 +15,13 @@ import kotlin.system.measureTimeMillis
  */
 object PerformanceMonitor {
     
-    private const val TAG = "TogaiPerformance"
+    @PublishedApi
+    internal const val TAG = "TogaiPerformance"
     private val metrics = ConcurrentHashMap<String, PerformanceMetric>()
-    private var isEnabled = BuildConfig.DEBUG
+    // JVM name avoids clashing with the public setEnabled(Boolean) below
+    @PublishedApi
+    @set:JvmName("setEnabledInternal")
+    internal var isEnabled = BuildConfig.DEBUG
     
     /**
      * Performance metric data class

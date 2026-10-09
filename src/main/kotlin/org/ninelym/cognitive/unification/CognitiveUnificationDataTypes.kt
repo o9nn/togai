@@ -1,6 +1,8 @@
 package org.ninelym.cognitive.unification
 
 import org.ninelym.cognitive.CognitiveTensor
+import org.ninelym.cognitive.ecan.ECANKernel
+import org.ninelym.cognitive.hypergraph.Hypergraph
 
 /**
  * Data types for Phase 6 Cognitive Unification
@@ -331,14 +333,10 @@ data class Phase6TensorSignature(
 }
 
 /**
- * Placeholder data types for system statistics (may be implemented elsewhere)
+ * STI/LTI attention aggregates used by the unification layer.
+ * Distinct from org.ninelym.cognitive.ecan.ECANStats, which reports combined
+ * importance rather than separate STI/LTI totals.
  */
-data class HypergraphStats(
-    val atomCount: Int,
-    val linkCount: Int,
-    val complexity: Float = 0.0f
-)
-
 data class ECANStats(
     val totalSTI: Float,
     val totalLTI: Float,
@@ -348,21 +346,17 @@ data class ECANStats(
     val cyclesRun: Int
 )
 
-data class MetaCognitiveInsights(
-    val systemSelfAwareness: Float,
-    val cognitiveRuleCount: Int,
-    val processingEfficiency: Float,
-    val attentionCoherence: Float
-)
-
-data class EvolutionStats(
-    val bestOverallFitness: Float,
-    val convergenceRate: Float,
-    val generationsRun: Int
-)
-
-data class RecursiveVerificationStats(
-    val averageRecursionDepth: Float,
-    val averageSystemHealth: Float,
-    val totalFeedbackActions: Int
-)
+internal fun computeECANStats(hypergraph: Hypergraph, ecanKernel: ECANKernel): ECANStats {
+    val atoms = hypergraph.getAllAtoms()
+    val kernelStats = ecanKernel.getECANStats()
+    val totalSTI = atoms.sumOf { it.attentionValue.sti.toDouble() }.toFloat()
+    val totalLTI = atoms.sumOf { it.attentionValue.lti.toDouble() }.toFloat()
+    return ECANStats(
+        totalSTI = totalSTI,
+        totalLTI = totalLTI,
+        averageSTI = if (atoms.isEmpty()) 0.0f else totalSTI / atoms.size,
+        averageLTI = if (atoms.isEmpty()) 0.0f else totalLTI / atoms.size,
+        attentionFocus = kernelStats.highAttentionAtoms.toFloat(),
+        cyclesRun = kernelStats.spreadingOperations
+    )
+}

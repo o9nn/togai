@@ -7,6 +7,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import org.ninelym.cognitive.hypergraph.Hypergraph
 import org.ninelym.cognitive.hypergraph.Atom
 import org.ninelym.cognitive.hypergraph.AtomType
+import org.ninelym.cognitive.hypergraph.TruthValue
+import org.ninelym.cognitive.hypergraph.AttentionValue
+import org.ninelym.cognitive.hypergraph.HyperLink
+import org.ninelym.cognitive.hypergraph.LinkType
 import org.ninelym.cognitive.scheme.SchemeCognitiveGrammar
 import org.ninelym.cognitive.tensor.TensorFragmentProcessor
 import org.ninelym.cognitive.verification.CognitiveVerificationSystem
@@ -23,6 +27,9 @@ import org.ninelym.ai.ConversationContext
 import org.ninelym.ai.ImageStyle
 import org.ninelym.cognitive.unification.*
 
+/** Minimum total importance for an atom to appear in CognitiveState.tensors. */
+private const val ACTIVE_TENSOR_THRESHOLD = 0.1f
+
 /**
  * Main cognitive engine integrating Phase 1, 2, 5, and 6 components
  * 
@@ -31,9 +38,10 @@ import org.ninelym.cognitive.unification.*
  * meta-cognition with evolutionary optimization, and comprehensive
  * testing with cognitive unification.
  */
-class CognitiveEngine {
+class CognitiveEngine(
+    private val hypergraph: Hypergraph = Hypergraph()
+) {
     
-    private val hypergraph = Hypergraph()
     private val schemeGrammar = SchemeCognitiveGrammar()
     private val tensorProcessor = TensorFragmentProcessor()
     private val verificationSystem = CognitiveVerificationSystem()
@@ -85,7 +93,151 @@ class CognitiveEngine {
             ProcessingResult.failure("Failed to process expression: ${e.message}")
         }
     }
-    
+
+    /**
+     * Construct an Atom from individual fields and add it to the hypergraph
+     */
+    fun addAtom(
+        id: String,
+        type: AtomType,
+        name: String,
+        truthStrength: Float,
+        truthConfidence: Float,
+        attentionSTI: Float,
+        attentionLTI: Float
+    ): ProcessingResult {
+        val atom = Atom(
+            id = id,
+            type = type,
+            name = name,
+            truthValue = TruthValue(strength = truthStrength, confidence = truthConfidence),
+            attentionValue = AttentionValue(sti = attentionSTI, lti = attentionLTI)
+        )
+        return try {
+            if (hypergraph.addAtom(atom)) {
+                ProcessingResult.success(
+                    message = "Added atom ${atom.id}",
+                    atoms = listOf(atom)
+                )
+            } else {
+                ProcessingResult.failure("Atom with id ${atom.id} already exists")
+            }
+        } catch (e: Exception) {
+            ProcessingResult.failure("Failed to add atom ${atom.id}: ${e.message}")
+        }
+    }
+
+    /**
+     * Link two existing atoms with a named relation. The label is kept in the
+     * link id; EVALUATION is the default type because an EvaluationLink is a
+     * predicate-labelled relation between atoms.
+     */
+    fun addLink(
+        sourceId: String,
+        targetId: String,
+        label: String,
+        type: LinkType = LinkType.EVALUATION
+    ): ProcessingResult {
+        val link = HyperLink(
+            id = "$label:$sourceId:$targetId",
+            type = type,
+            targets = listOf(sourceId, targetId)
+        )
+        return if (hypergraph.addLink(link)) {
+            ProcessingResult.success(message = "Linked $sourceId -[$label]-> $targetId")
+        } else {
+            ProcessingResult.failure("Cannot link $sourceId -> $targetId: both atoms must exist")
+        }
+    }
+
+    fun runAttentionCycle(): org.ninelym.cognitive.ecan.AttentionAllocationResult {
+        return ecanKernel.runAttentionCycle()
+    }
+
+    // ---- Self-healing operations ----
+    // CognitiveState.tensors are derived from atoms (salience = STI, autonomyIndex = LTI,
+    // context = truth confidence); there is no separate tensor store, so these act on atoms.
+
+    /** Rescale active atoms' STI so its mean/std match the target. Returns atoms updated. */
+    fun normalizeAttention(targetMean: Float, targetStdDev: Float): Int {
+        val active = hypergraph.getActiveAtoms(ACTIVE_TENSOR_THRESHOLD)
+        if (active.isEmpty()) return 0
+        val stis = active.map { it.attentionValue.sti }
+        val mean = stis.average().toFloat()
+        val std = Math.sqrt(stis.map { (it - mean) * (it - mean) }.average()).toFloat()
+        active.forEach { atom ->
+            val z = if (std > 0f) (atom.attentionValue.sti - mean) / std else 0f
+            val sti = (targetMean + z * targetStdDev).coerceAtLeast(0f)
+            hypergraph.updateAtomAttention(atom.id, atom.attentionValue.copy(sti = sti))
+        }
+        return active.size
+    }
+
+    /** Move each active atom's STI toward the current mean by [factor] (0..1). Returns atoms updated. */
+    fun applyAttentionSmoothing(factor: Float): Int {
+        val active = hypergraph.getActiveAtoms(ACTIVE_TENSOR_THRESHOLD)
+        if (active.isEmpty()) return 0
+        val f = factor.coerceIn(0f, 1f)
+        val mean = active.map { it.attentionValue.sti }.average().toFloat()
+        active.forEach { atom ->
+            val sti = atom.attentionValue.sti + f * (mean - atom.attentionValue.sti)
+            hypergraph.updateAtomAttention(atom.id, atom.attentionValue.copy(sti = sti))
+        }
+        return active.size
+    }
+
+    /** Scale STI by (1 - rate) for active atoms whose STI exceeds [threshold]. Returns atoms decayed. */
+    fun decayHighAttention(rate: Float, threshold: Float): Int {
+        val r = rate.coerceIn(0f, 1f)
+        val high = hypergraph.getActiveAtoms(ACTIVE_TENSOR_THRESHOLD).filter { it.attentionValue.sti > threshold }
+        high.forEach { atom ->
+            hypergraph.updateAtomAttention(atom.id, atom.attentionValue.copy(sti = atom.attentionValue.sti * (1 - r)))
+        }
+        return high.size
+    }
+
+    /**
+     * Reset the non-finite truth/attention values of the atom behind active tensor [index]
+     * (same order as CognitiveState.tensors). Re-checks first, since the list can change between
+     * detection and recovery. Returns true if the atom was repaired.
+     */
+    fun resetTensor(index: Int): Boolean {
+        val atom = hypergraph.getActiveAtoms(ACTIVE_TENSOR_THRESHOLD).getOrNull(index) ?: return false
+        val tv = atom.truthValue
+        val av = atom.attentionValue
+        val badTruth = !tv.strength.isFinite() || !tv.confidence.isFinite()
+        val badAttention = !av.sti.isFinite() || !av.lti.isFinite()
+        if (!badTruth && !badAttention) return false
+        return hypergraph.updateAtom(atom.copy(
+            truthValue = if (badTruth) TruthValue.DEFAULT else tv,
+            attentionValue = if (badAttention) AttentionValue.DEFAULT else av
+        ))
+    }
+
+    /**
+     * Clamp every atom to the TruthValue/AttentionValue validity rules: truth strength and
+     * confidence in [0, 1], STI/LTI >= 0. Returns atoms changed.
+     */
+    fun clampAllTensors(): Int {
+        var changed = 0
+        hypergraph.getAllAtoms().forEach { atom ->
+            val tv = atom.truthValue
+            val av = atom.attentionValue
+            val clampedTv = TruthValue(tv.strength.coerceIn(0f, 1f), tv.confidence.coerceIn(0f, 1f))
+            val clampedAv = AttentionValue(av.sti.coerceAtLeast(0f), av.lti.coerceAtLeast(0f))
+            if (clampedTv != tv || clampedAv != av) {
+                hypergraph.updateAtom(atom.copy(truthValue = clampedTv, attentionValue = clampedAv))
+                changed++
+            }
+        }
+        return changed
+    }
+
+    /** Clear the completed-task history held by this engine's scheduler. */
+    fun clearCaches() {
+        ecanScheduler.clearCompletedTasks()
+    }
+
     /**
      * Convert hypergraph atoms back to Scheme expression
      */
@@ -106,7 +258,7 @@ class CognitiveEngine {
      * Get current cognitive state as tensor collection
      */
     fun getCognitiveState(): CognitiveState {
-        val activeTensors = hypergraph.getActiveTensors(0.1f)
+        val activeTensors = hypergraph.getActiveTensors(ACTIVE_TENSOR_THRESHOLD)
         val activeFragments = tensorProcessor.getActiveFragments(0.1f)
         val verificationReport = verificationSystem.runSystemVerification(
             hypergraph, 
@@ -549,9 +701,7 @@ class CognitiveEngine {
             cycleHealth = calculatePhase5Health(introspectionResult, evolutionResult, verificationResult)
         )
     }
-    
-    }
-    
+
     // ========================================
     // Phase 6: Cognitive Unification Methods
     // ========================================

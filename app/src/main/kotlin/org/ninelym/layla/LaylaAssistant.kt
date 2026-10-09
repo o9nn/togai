@@ -752,11 +752,11 @@ suspend fun main() {
             println("  ✅ Tasks scheduled: ${task1.getOrThrow()}, ${task2.getOrThrow()}")
         }
         
-        val stats = taskManager.getQueueStatistics()
+        val queueStats = taskManager.getQueueStatistics()
         println("  Queue statistics:")
-        println("     Total tasks: ${stats.totalTasks}")
-        println("     Queued: ${stats.queuedTasks}")
-        println("     Running: ${stats.runningTasks}")
+        println("     Total tasks: ${queueStats.totalTasks}")
+        println("     Queued: ${queueStats.queuedTasks}")
+        println("     Running: ${queueStats.runningTasks}")
         println()
         
         // Phase 13: Document Processing Demo
@@ -872,10 +872,10 @@ suspend fun main() {
         val cloudSync = layla.getCloudSyncService()
         
         println("  Cloud sync is disabled by default for privacy")
-        val stats = cloudSync.getSyncStatistics()
-        println("  Sync enabled: ${stats.enabled}")
-        println("  Devices synced: ${stats.deviceCount}")
-        println("  Pending operations: ${stats.pendingOperations}")
+        val syncStats = cloudSync.getSyncStatistics()
+        println("  Sync enabled: ${syncStats.enabled}")
+        println("  Devices synced: ${syncStats.deviceCount}")
+        println("  Pending operations: ${syncStats.pendingOperations}")
         println()
         
         // Phase 18: Responsive UI Demo

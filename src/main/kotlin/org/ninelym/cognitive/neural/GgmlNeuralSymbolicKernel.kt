@@ -30,16 +30,25 @@ class GgmlNeuralSymbolicKernel {
         const val SALIENCE_DIM = 3   // maps to salience
         const val AUTONOMY_DIM = 4   // maps to autonomy_index
         
+        // Library built by app/src/main/cpp/CMakeLists.txt; it holds this class's JNI methods
+        const val NATIVE_LIBRARY = "ggml-neural-symbolic"
+
+        /** False when no native library loaded (e.g. host-JVM unit tests); initialize() then returns false. */
+        @JvmStatic
+        var isNativeLibraryLoaded = false
+            private set
+
         init {
-            try {
-                System.loadLibrary(GGML_CPU)
-            } catch (e: UnsatisfiedLinkError) {
-                // Fallback to base ggml
+            isNativeLibraryLoaded = listOf(NATIVE_LIBRARY, GGML_CPU, "ggml").any { name ->
                 try {
-                    System.loadLibrary("ggml")
-                } catch (fallbackError: UnsatisfiedLinkError) {
-                    println("Warning: ggml native library not available")
+                    System.loadLibrary(name)
+                    true
+                } catch (e: UnsatisfiedLinkError) {
+                    false
                 }
+            }
+            if (!isNativeLibraryLoaded) {
+                println("Warning: ggml native library not available")
             }
         }
     }
@@ -48,6 +57,10 @@ class GgmlNeuralSymbolicKernel {
      * Initialize the neural-symbolic kernel with backend selection
      */
     fun initialize(backend: GgmlBackend = GgmlBackend.CPU): Boolean {
+        if (!isNativeLibraryLoaded) {
+            println("ggml backend $backend unavailable: native library not loaded")
+            return false
+        }
         return try {
             when (backend) {
                 GgmlBackend.CPU -> initializeNative(GGML_CPU)
@@ -58,6 +71,9 @@ class GgmlNeuralSymbolicKernel {
                 isInitialized = it
             }
         } catch (e: Exception) {
+            println("Failed to initialize ggml backend $backend: ${e.message}")
+            false
+        } catch (e: UnsatisfiedLinkError) {
             println("Failed to initialize ggml backend $backend: ${e.message}")
             false
         }

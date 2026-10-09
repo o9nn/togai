@@ -260,6 +260,39 @@ class ECANScheduler(
     fun clearCompletedTasks() {
         completedTasks.clear()
     }
+
+    /**
+     * Queue depth, running tasks, and how many queued tasks have waited longer than stallTimeoutMs
+     */
+    fun getQueueStatus(stallTimeoutMs: Long): QueueStatus {
+        val now = System.currentTimeMillis()
+        return QueueStatus(
+            queueDepth = taskQueue.size,
+            runningTasks = runningTasks.size,
+            stalledTasks = taskQueue.count { now - it.createdAt > stallTimeoutMs }
+        )
+    }
+
+    /**
+     * Drop the lowest-priority fraction of queued tasks (ratio in 0..1). Returns tasks dropped.
+     */
+    fun drainLowPriorityTasks(ratio: Float): Int {
+        val count = (taskQueue.size * ratio.coerceIn(0.0f, 1.0f)).toInt()
+        if (count == 0) return 0
+        val toDrop = taskQueue.sortedBy { it.priority }.take(count).map { it.id }.toSet()
+        taskQueue.removeAll { it.id in toDrop }
+        return count
+    }
+
+    /**
+     * Remove queued tasks that have waited longer than timeoutMs. Returns tasks removed.
+     */
+    fun cancelStalledTasks(timeoutMs: Long): Int {
+        val now = System.currentTimeMillis()
+        val before = taskQueue.size
+        taskQueue.removeAll { now - it.createdAt > timeoutMs }
+        return before - taskQueue.size
+    }
     
     /**
      * Generate unique task ID
@@ -270,6 +303,12 @@ class ECANScheduler(
 /**
  * Scheduled task with ECAN properties
  */
+data class QueueStatus(
+    val queueDepth: Int,
+    val runningTasks: Int,
+    val stalledTasks: Int
+)
+
 data class ScheduledTask(
     val id: String,
     val name: String,

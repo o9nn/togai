@@ -1,6 +1,7 @@
 package org.ninelym.cognitive.unification
 
 import org.ninelym.cognitive.hypergraph.Hypergraph
+import org.ninelym.cognitive.hypergraph.HypergraphStats
 import org.ninelym.cognitive.ecan.ECANKernel
 import org.ninelym.cognitive.metacognition.*
 import org.ninelym.cognitive.CognitiveTensor
@@ -91,7 +92,7 @@ class UnifiedCognitiveStateMonitor(
     }
     
     private fun captureAttentionState(): ECANAttentionState {
-        val ecanStats = ecanKernel.getStats()
+        val ecanStats = computeECANStats(hypergraph, ecanKernel)
         
         return ECANAttentionState(
             totalSTI = ecanStats.totalSTI,
@@ -120,12 +121,13 @@ class UnifiedCognitiveStateMonitor(
         val insights = metaSystem.getMetaCognitiveInsights()
         val evolutionStats = optimizer.getEvolutionStats()
         val verificationStats = verificationSystem.getRecursiveVerificationStats()
-        
+        val introspection = metaSystem.getLatestIntrospection()
+
         return MetaCognitiveState(
             selfAwareness = insights.systemSelfAwareness,
             cognitiveRuleCount = insights.cognitiveRuleCount,
-            processingEfficiency = insights.processingEfficiency,
-            attentionCoherence = insights.attentionCoherence,
+            processingEfficiency = introspection?.processingEfficiency ?: 0.5f,
+            attentionCoherence = introspection?.attentionCoherence ?: 0.5f,
             evolutionFitness = evolutionStats.bestOverallFitness,
             convergenceRate = evolutionStats.convergenceRate,
             verificationDepth = verificationStats.averageRecursionDepth,
@@ -147,7 +149,7 @@ class UnifiedCognitiveStateMonitor(
         return mapOf(
             "phase1_primitives" to CognitiveTensor(0.8f, 0.7f, 0.9f, 0.6f, 0.8f),
             "phase2_attention" to CognitiveTensor(0.7f, 0.8f, 0.8f, 0.9f, 0.7f),
-            "phase5_metacognition" to metaSystem.getMetaCognitiveTensor(),
+            "phase5_metacognition" to calculatePhase5TensorSignature(),
             "phase6_unification" to calculatePhase6TensorSignature()
         )
     }
@@ -208,6 +210,15 @@ class UnifiedCognitiveStateMonitor(
         return consistencyChecks.average().toFloat()
     }
     
+    // Same [rules, mutability, fitness, introspect] mapping as CognitiveEngine.getPhase5TensorSignature()
+    private fun calculatePhase5TensorSignature(): CognitiveTensor {
+        val insights = metaSystem.getMetaCognitiveInsights()
+        val evolutionStats = optimizer.getEvolutionStats()
+        val rules = Math.min(insights.cognitiveRuleCount.toFloat() / 100.0f, 1.0f)
+        val mutability = Math.min(evolutionStats.convergenceRate * 10.0f, 1.0f)
+        return CognitiveTensor(rules, mutability, evolutionStats.bestOverallFitness, insights.systemSelfAwareness, 0.8f)
+    }
+
     private fun calculatePhase6TensorSignature(): CognitiveTensor {
         // Phase 6 tensor signature: [functions, tests, docs, synthesis]
         val functions = calculateFunctionCompleteness()
