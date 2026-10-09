@@ -7,6 +7,7 @@ import kotlinx.coroutines.runBlocking
 import org.ninelym.cognitive.hypergraph.Hypergraph
 import org.ninelym.cognitive.hypergraph.Atom
 import org.ninelym.cognitive.hypergraph.AtomType
+import org.ninelym.cognitive.hypergraph.TruthValue
 import org.ninelym.cognitive.ecan.ECANKernel
 import org.ninelym.cognitive.selfhealing.*
 import org.ninelym.cognitive.distributed.*
@@ -426,7 +427,7 @@ class Phase7Test {
 
     @Test
     fun `test SymbolMatch creation`() {
-        val atom = Atom("test-atom", AtomType.CONCEPT, "test", 0.8f)
+        val atom = Atom("test-atom", AtomType.CONCEPT, "test", TruthValue(0.8f, TruthValue.DEFAULT.confidence))
         val match = SymbolMatch(
             symbolId = "test-atom",
             atom = atom,

@@ -54,12 +54,14 @@ class Phase3IntegrationTest {
         println("\n�� Test 3.1.1: Kernel Initialization")
         println("-".repeat(60))
         
-        // Test CPU backend initialization (may fail without native library)
-        try {
-            val cpuInit = kernel.initialize(GgmlBackend.CPU)
+        // With the native library, CPU init must succeed; without it (host-JVM unit tests),
+        // initialize must report failure rather than throw.
+        val cpuInit = kernel.initialize(GgmlBackend.CPU)
+        if (GgmlNeuralSymbolicKernel.isNativeLibraryLoaded) {
             assertTrue("CPU backend should initialize", cpuInit)
             println("✓ CPU backend initialized")
-        } catch (e: Exception) {
+        } else {
+            assertFalse("initialize should return false without the native library", cpuInit)
             println("⚠ Native library not available (expected in pure Kotlin tests)")
         }
     }

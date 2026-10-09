@@ -89,3 +89,6 @@ dmypy.json
 .env.local
 analyze_code.py
 issue_report.md
+
+# Android native (CMake) build intermediates
+.cxx/
