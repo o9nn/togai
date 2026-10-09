@@ -35,9 +35,10 @@ import org.ninelym.cognitive.unification.*
  * meta-cognition with evolutionary optimization, and comprehensive
  * testing with cognitive unification.
  */
-class CognitiveEngine {
+class CognitiveEngine(
+    private val hypergraph: Hypergraph = Hypergraph()
+) {
     
-    private val hypergraph = Hypergraph()
     private val schemeGrammar = SchemeCognitiveGrammar()
     private val tensorProcessor = TensorFragmentProcessor()
     private val verificationSystem = CognitiveVerificationSystem()

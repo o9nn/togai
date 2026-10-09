@@ -125,7 +125,7 @@ class QuantumNeuralProcessor {
         val amplitudes = FloatArray(1 shl numQubits) // 2^numQubits
         
         // Encode tensor values into quantum amplitudes
-        val tensorValues = tensor.values
+        val tensorValues = tensor.toArray()
         val scale = 1f / sqrt(tensorValues.size.toFloat())
         
         for (i in amplitudes.indices) {

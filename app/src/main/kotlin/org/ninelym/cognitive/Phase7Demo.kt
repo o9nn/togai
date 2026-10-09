@@ -3,6 +3,7 @@ package org.ninelym.cognitive
 import org.ninelym.cognitive.hypergraph.Hypergraph
 import org.ninelym.cognitive.hypergraph.Atom
 import org.ninelym.cognitive.hypergraph.AtomType
+import org.ninelym.cognitive.hypergraph.TruthValue
 import org.ninelym.cognitive.ecan.ECANKernel
 import org.ninelym.cognitive.selfhealing.*
 import org.ninelym.cognitive.distributed.*
@@ -71,7 +72,7 @@ class Phase7Demo {
                 id = "concept-$name",
                 type = AtomType.CONCEPT,
                 name = name,
-                truthValue = 0.8f
+                truthValue = TruthValue(0.8f, TruthValue.DEFAULT.confidence)
             )
             hypergraph.addAtom(atom)
         }
@@ -171,7 +172,7 @@ class Phase7Demo {
             id = "distributed-test-${System.currentTimeMillis()}",
             type = AtomType.CONCEPT,
             name = "distributed_knowledge",
-            truthValue = 0.9f
+            truthValue = TruthValue(0.9f, TruthValue.DEFAULT.confidence)
         )
         val addResult = nodeA.localAddAtom(newAtom)
         println("   - Result: ${addResult.message}")
@@ -388,7 +389,7 @@ private fun Hypergraph.addRelation(sourceId: String, targetId: String, relationT
         id = "relation-$sourceId-$targetId-$relationType",
         type = AtomType.LINK,
         name = relationType,
-        truthValue = 0.9f
+        truthValue = TruthValue(0.9f, TruthValue.DEFAULT.confidence)
     )
     this.addAtom(relationAtom)
 }

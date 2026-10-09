@@ -104,6 +104,15 @@ class Hypergraph {
         atoms[atomId] = updatedAtom
         return true
     }
+
+    /**
+     * Replace an existing atom (matched by id); returns false if it isn't present
+     */
+    fun updateAtom(atom: Atom): Boolean {
+        if (!atoms.containsKey(atom.id)) return false
+        atoms[atom.id] = atom
+        return true
+    }
     
     /**
      * Perform activation spreading across the hypergraph mesh

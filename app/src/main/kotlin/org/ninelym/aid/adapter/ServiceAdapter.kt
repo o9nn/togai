@@ -21,9 +21,9 @@ import org.ninelym.aid.persona.*
  */
 abstract class ServiceAdapter<T>(
     private val service: T,
-    override val endpointName: String,
-    override val endpointDescription: String,
-    override val endpointCapabilities: Set<ServiceCapability>
+    endpointName: String,
+    endpointDescription: String,
+    endpointCapabilities: Set<ServiceCapability>
 ) : BaseEndpointAdapter(endpointName, endpointDescription, endpointCapabilities) {
 
     /**

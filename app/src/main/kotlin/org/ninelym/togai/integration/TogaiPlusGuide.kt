@@ -210,7 +210,7 @@ val results = orchestrator.processFilesWithAI(
 )
 
 results.forEach { (file, summary) ->
-    println("$file:\n$summary\n")
+    println("${'$'}file:\n${'$'}summary\n")
 }
 """.trimIndent()
         ),
@@ -251,7 +251,7 @@ val workflow = listOf(
 )
 
 val result = orchestrator.executeWorkflow(workflow)
-println("Success: ${result.success}")
+println("Success: ${'$'}{result.success}")
 """.trimIndent()
         )
     )

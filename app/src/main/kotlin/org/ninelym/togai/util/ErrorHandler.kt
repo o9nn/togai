@@ -1,6 +1,7 @@
 package org.ninelym.togai.util
 
 import android.util.Log
+import org.ninelym.togai.BuildConfig
 import kotlinx.coroutines.CancellationException
 import java.io.IOException
 import java.net.SocketTimeoutException

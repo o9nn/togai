@@ -70,7 +70,7 @@ class HybridNeuralSymbolicBridge(
 
             atoms.forEach { atom ->
                 // Get neighbors (linked atoms)
-                val neighbors = hypergraph.getNeighbors(atom.id)
+                val neighbors = hypergraph.getConnectedAtoms(atom.id).map { it.id }
 
                 neighbors.forEach { neighborId ->
                     val embedding = symbolEmbeddings[atom.id] ?: return@forEach
@@ -78,7 +78,7 @@ class HybridNeuralSymbolicBridge(
 
                     // Positive sample loss (should be similar)
                     val similarity = cosineSimilarity(embedding, neighborEmbedding)
-                    val positiveLoss = -log(sigmoid(similarity) + 1e-10f)
+                    val positiveLoss = -ln(sigmoid(similarity) + 1e-10f)
 
                     // Negative sampling
                     val negativeSamples = sampleNegatives(atom.id, atoms, config.negativeSamples)
@@ -86,7 +86,7 @@ class HybridNeuralSymbolicBridge(
                     negativeSamples.forEach { negId ->
                         val negEmbedding = symbolEmbeddings[negId] ?: return@forEach
                         val negSim = cosineSimilarity(embedding, negEmbedding)
-                        negativeLoss += -log(sigmoid(-negSim) + 1e-10f)
+                        negativeLoss += -ln(sigmoid(-negSim) + 1e-10f)
                     }
 
                     iterLoss += positiveLoss + negativeLoss
@@ -156,7 +156,7 @@ class HybridNeuralSymbolicBridge(
         val embeddings = atomIds.mapNotNull { symbolEmbeddings[it] }
 
         if (embeddings.isEmpty()) {
-            return CognitiveTensor() // Default tensor
+            return CognitiveTensor(0.5f, 0.5f, 0.5f, 0.5f, 0.5f) // Neutral default, matching the class's optional-field defaults
         }
 
         val aggregated = when (aggregation) {
@@ -177,7 +177,7 @@ class HybridNeuralSymbolicBridge(
         negativeExamples: List<List<String>> = emptyList()
     ): ConceptLearningResult {
         if (positiveExamples.isEmpty()) {
-            return ConceptLearningResult(false, "No positive examples provided")
+            return ConceptLearningResult(success = false, conceptName = conceptName, message = "No positive examples provided")
         }
 
         // Extract common features from positive examples
@@ -473,7 +473,7 @@ class HybridNeuralSymbolicBridge(
         allAtoms: List<Atom>,
         count: Int
     ): List<String> {
-        val neighbors = hypergraph.getNeighbors(positiveId).toSet()
+        val neighbors = hypergraph.getConnectedAtoms(positiveId).map { it.id }.toSet()
         return allAtoms
             .filter { it.id != positiveId && it.id !in neighbors }
             .shuffled()
