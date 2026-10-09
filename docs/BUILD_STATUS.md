@@ -16,7 +16,7 @@ module builds; files changed on this branch are kept identical in both copies.
 | `:app:compileDebugKotlin` on `main` (after Compose fix) | 120 errors |
 | `:app:compileDebugKotlin` on this branch | **BUILD SUCCESSFUL, 0 errors** |
 | Errors this branch introduced | **0** (error sets compared against a `main` build in a separate worktree) |
-| `:app:assembleDebug` (what Android CI runs) | **BUILD SUCCESSFUL**, `app-debug.apk` produced (needs CMake 3.18.1 + NDK 25.1.8937393, both present on GitHub's Ubuntu runners) |
+| `:app:assembleDebug` (what Android CI runs) | **BUILD SUCCESSFUL**, `app-debug.apk` produced. Uses CMake 3.31.5 (shipped on GitHub's Ubuntu 24.04 runners alongside 4.1.2; 3.18.1, previously pinned, is not, which failed CI). AGP auto-installs its default NDK 25.1.8937393 if missing. |
 | `compileTestKotlin` | Not addressed; 148 errors when last measured on the old root build, all pre-existing test/API drift |
 
 Before any of this, `:app` couldn't compile at all: `app/build.gradle.kts` pinned
