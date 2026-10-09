@@ -1,76 +1,65 @@
 # Togai Kotlin Build Status
 
-_Last verified: 2026-10-09 on JDK 21 (toolchain-provisioned JDK 11), Gradle 8.14.3.
-All commits listed are pushed to `claude/verify-smali-manifest-0M7yh`._
+_Last verified: 2026-10-09 with `gradle :app:compileDebugKotlin` against a real
+Android SDK (platform 34, build-tools 34.0.0), Gradle 8.14.3, Kotlin 1.9.25._
 
-## TL;DR
+## Layout (as of current `main`)
 
-| Task | State |
+`main` is an Android multi-project build. **`app/src/main/kotlin` is the code that
+gets compiled.** The root `src/main/kotlin` is an older duplicate that no Gradle
+module builds; files changed on this branch are kept identical in both copies.
+
+## Status
+
+| Check | Result |
 |---|---|
-| `gradle compileKotlin` (main) | **BUILD SUCCESSFUL** — was 74 errors (and before that, failed at configuration) |
-| `gradle compileTestKotlin` | **148 errors**, all pre-existing test-vs-source API drift (see below) |
-| `gradle test` | Blocked on test compilation |
+| `:app:compileDebugKotlin` on `main` (after Compose fix) | 120 errors |
+| `:app:compileDebugKotlin` on this branch | **14 errors**, all in `cognitive/selfhealing/SelfHealingCognitiveSystem.kt` |
+| Errors this branch introduced | **0** (error sets compared against a `main` build in a separate worktree) |
+| `compileTestKotlin` | Not reached; 148 errors when last measured on the old root build, all pre-existing test/API drift |
 
-The test errors were invisible until now: Gradle can't compile tests until the
-main sources compile. None of them reference any symbol changed while fixing
-main (checked by grepping the full error list).
+Before any of this, `:app` couldn't compile at all: `app/build.gradle.kts` pinned
+Compose Compiler `1.5.4` (Kotlin 1.9.20 only) against Kotlin 1.9.25. Bumped to
+`1.5.15`, the paired release.
 
-## How main got to zero
+## Remaining: `SelfHealingCognitiveSystem.kt` (14 errors) — needs a decision
 
-Every change was verified by recompiling before committing.
+It calls 14 methods that don't exist, and they can't be added as mechanical fixes:
 
-**Unambiguous fixes (syntax, imports, language rules)**
-
-| File | Change |
+| Calls | Problem |
 |---|---|
-| `settings.gradle.kts` | `foojay-resolver-convention` plugin so Gradle can provision the declared JDK 11 toolchain |
-| `CognitiveEngine.kt` | Removed a stray `}` that closed the class early and ejected all Phase 6 methods |
-| `NeuroplasticityEngine.kt` | Missing `import kotlin.math.abs` |
-| `TypeSafeIdentifiers.kt` | `inline` interface members → top-level inline extensions (Kotlin forbids inline virtual members) |
-| `IntegrationVerificationSystem.kt` | `async {}` wrapped in `coroutineScope {}`; `tests` map typed `suspend () -> Boolean` |
-| `PrivacyEnhancementService.kt` | `Sequence.toList().takeLast()`; explicitly-typed `sumOf` selector |
-| `QuantumInspiredOptimizer.kt`, `TokenizerEngine.kt` | Primitive arrays converted before `zip` / `mapNotNull` |
-| `CausalReasoningEngine.kt` | `AtomType.CONCEPT_NODE`/`EVALUATION_LINK` → `CONCEPT`/`EVALUATION` (per adjacent comments) |
-| `LaylaAssistant.kt` | Two unrelated `stats` vals in one function → `queueStats` / `syncStats` |
+| `ecanKernel.getQueueStatus()`, `drainLowPriorityTasks()`, `cancelStalledTasks()` | `ECANKernel` has no task queue. The queue lives in `ECANScheduler`, which this class doesn't reference. |
+| `hypergraph.findOrphanedAtoms()` / `removeOrphanedAtoms()` | Atoms hold no references in this model, so "atoms with invalid references" can't occur. The real integrity gap is the opposite: `Hypergraph.removeAtom()` leaves **dangling links**. |
+| `hypergraph.detectCircularReferences()` / `breakCircularReferences()` | Links are undirected hyperedges; a cycle (A–B–C–A) is ordinary structure, not corruption. Auto-"breaking" cycles would delete valid links. |
+| `cognitiveEngine.normalizeAttention / applyAttentionSmoothing / decayHighAttention` | Feasible (attention values live on atoms), but each needs a defined formula. |
+| `cognitiveEngine.resetTensor(index) / clampAllTensors() / clearCaches()`, `hypergraph.compactStorage()` | `CognitiveEngine` has no indexed tensor store or caches to act on. |
 
-**Design decisions made** (each the least invasive option; revisit if intent differs)
+Several of these are destructive and would run automatically from a monitoring loop,
+so their semantics (what may be deleted, when) are a product decision. The only
+caller is `Phase7Demo`.
+
+## Design decisions made on this branch
+
+Least-invasive choice in each case; revisit if intent differs.
 
 | Area | Decision |
 |---|---|
-| `unification` placeholder types | Deleted the four `"Placeholder data types ... may be implemented elsewhere"` duplicates and used the real `hypergraph`/`metacognition` types. Missing values now come from their real sources: `processingEfficiency`/`attentionCoherence` from the latest `IntrospectionResult` (new `MetaCognitivePathwaySystem.getLatestIntrospection()`), `averageSystemHealth` as a new aggregate on `RecursiveVerificationStats`, STI/LTI aggregates via `computeECANStats()`. Neutral default `0.5f` when no history exists, matching the existing `calculateMetaCognitiveHealth()` convention. |
-| `CognitiveEngine` API for `Phase6Demo` | Added `addAtom(...)` (fields map 1:1 to `Atom`/`TruthValue`/`AttentionValue`), `runAttentionCycle()` (delegates to `ECANKernel.runAttentionCycle()`), and `addLink(source, target, label, type = EVALUATION)` — free-text labels have no `LinkType` equivalent; EvaluationLink is OpenCog's predicate-labelled relation. Label is kept in the link id. |
-| Causal `TruthValue`s | `causalGraph.confidence` is graph-wide → `TruthValue.confidence`; edges take `strength` from `causalGraph.strengths`; node atoms use strength `1.0` (asserted graph members). |
-| `StableDiffusionService` image path | Generator returns bytes, not a path. Bytes are written to `<outputDir>/<taskId>.png` (constructor param, default `<tmpdir>/togai-sd`) so `imagePath` is a real file — `SharingService` reads it with `File(imagePath)`. |
-| `TaskerPluginService` | Uses public `LaylaInferenceService.infer()` instead of the private `performInference()`. |
-| `PerformanceOptimizationService` | `recordSnapshot` is `@PublishedApi internal`; `cache()` takes `T : Any` (`getCached` already treats `null` as missing). |
+| `unification` placeholder types | Deleted the four `"Placeholder ... may be implemented elsewhere"` duplicates; use real `hypergraph`/`metacognition` types. Missing values come from real sources: latest `IntrospectionResult` (new `getLatestIntrospection()`), a new `averageSystemHealth` aggregate on `RecursiveVerificationStats`, STI/LTI via `computeECANStats()`. Neutral `0.5f` when no history, matching existing convention. |
+| `CognitiveEngine` API | Added `addAtom(...)`, `addLink(source, target, label, type = EVALUATION)`, `runAttentionCycle()`; constructor now accepts an optional `Hypergraph` (default unchanged). |
+| `Hypergraph.updateAtom(atom)` | New: replace an existing atom by id (CRDT UPDATE path). |
+| Single-Float truth values | Causal graph: graph-wide `confidence` → `TruthValue.confidence`, edge `strength` → `strength`, node atoms strength `1.0`. `Phase7Demo`: number read as strength, confidence = `TruthValue.DEFAULT.confidence`. |
+| `StableDiffusionService` | Generator returns bytes; written to `<outputDir>/<taskId>.png` (default `<tmpdir>/togai-sd`) so `imagePath` is a real file, as `SharingService` expects. |
+| `MemoryOptimizer` pools | Typed by element (`CognitiveTensor`, `Atom`); the generic-`T` accessors weren't type-safe and had no callers. |
+| `SystemIntelligenceService` media detection | Compiles now; still returns `null` at runtime until the app ships a `NotificationListenerService` subclass (none exists). |
 
-## Test compilation: 148 errors
+Mechanical fixes (imports, `@PublishedApi`, primitive-array conversions, stray brace,
+`Sequence.takeLast`, `coroutineScope`, raw-string `$` escaping, etc.) are described in
+the individual commit messages.
 
-Tests were written against APIs that don't match the sources. By file:
+## Notes
 
-| File | Errors |
-|---|---|
-| `cognitive/metacognition/RecursiveVerificationSystemTest.kt` | 48 |
-| `cognitive/metacognition/EvolutionaryOptimizerTest.kt` | 22 |
-| `cognitive/TensorValidationFrameworkTest.kt` | 22 |
-| `cognitive/Phase5IntegrationTest.kt` | 21 |
-| `cognitive/metacognition/MetaCognitivePathwaySystemTest.kt` | 16 |
-| `ai/TogaCharacterTest.kt` | 8 |
-| `cognitive/unification/CognitiveUnificationTest.kt` | 6 |
-| `layla/phase2/StableDiffusionServiceTest.kt` | 2 |
-| `cognitive/causal/CausalReasoningEngineTest.kt` | 2 |
-| `ai/AIIntegrationTest.kt` | 1 |
-
-Typical causes: fields that don't exist on result types (`verificationLayers`,
-`overallSystemHealth`, `generationsRun`), enum values that don't exist
-(`AtomType.RELATION`, `ImageStyle.CYBERPUNK`), constructor arguments in the wrong
-order, and nullable map lookups (`Float?`) used where `Float` is required. Each
-needs a choice between changing the test to match the source or extending the
-source to match the test.
-
-## Other notes
-
-- An earlier pass of this work was lost when a container was replaced before its
-  commits were pushed; everything was redone and is now pushed after each commit.
-- Native JNI bindings described in `docs/TOGAI_GENERALIZATION_ROADMAP.md` remain
-  interface/stub-only — no `.so` files or native build wiring.
+- Android CI (`.github/workflows/android-ci.yml`) has failed on every `main` run since
+  2026-01-22. Logs have expired, so the cause can't be confirmed; the Compose
+  mismatch above would fail `assembleDebug` on its own.
+- Native JNI bindings in `docs/TOGAI_GENERALIZATION_ROADMAP.md` remain stubs (no
+  `.so` files or native build wiring).
