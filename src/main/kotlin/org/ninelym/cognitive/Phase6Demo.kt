@@ -1,5 +1,7 @@
 package org.ninelym.cognitive
 
+import kotlinx.coroutines.*
+
 import org.ninelym.cognitive.hypergraph.AtomType
 import org.ninelym.cognitive.unification.*
 

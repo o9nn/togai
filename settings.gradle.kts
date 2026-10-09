@@ -16,10 +16,14 @@ plugins {
 }
 
 dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
     repositories {
-        mavenCentral()
         google()
+        mavenCentral()
+        maven { url = uri("https://jitpack.io") }
+        maven { url = uri("https://maven.pkg.jetbrains.space/public/p/compose/dev") }
     }
 }
 
 rootProject.name = "togai"
+include(":app")

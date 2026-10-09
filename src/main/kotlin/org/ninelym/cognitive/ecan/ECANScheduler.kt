@@ -1,5 +1,7 @@
 package org.ninelym.cognitive.ecan
 
+import kotlinx.coroutines.*
+
 import org.ninelym.cognitive.CognitiveTensor
 import org.ninelym.cognitive.hypergraph.Atom
 import kotlin.math.max
