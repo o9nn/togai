@@ -14,29 +14,37 @@ module builds; files changed on this branch are kept identical in both copies.
 | Check | Result |
 |---|---|
 | `:app:compileDebugKotlin` on `main` (after Compose fix) | 120 errors |
-| `:app:compileDebugKotlin` on this branch | **14 errors**, all in `cognitive/selfhealing/SelfHealingCognitiveSystem.kt` |
+| `:app:compileDebugKotlin` on this branch | **BUILD SUCCESSFUL, 0 errors** |
 | Errors this branch introduced | **0** (error sets compared against a `main` build in a separate worktree) |
-| `compileTestKotlin` | Not reached; 148 errors when last measured on the old root build, all pre-existing test/API drift |
+| `:app:assembleDebug` (what Android CI runs) | **BUILD SUCCESSFUL**, `app-debug.apk` produced (needs CMake 3.18.1 + NDK 25.1.8937393, both present on GitHub's Ubuntu runners) |
+| `compileTestKotlin` | Not addressed; 148 errors when last measured on the old root build, all pre-existing test/API drift |
 
 Before any of this, `:app` couldn't compile at all: `app/build.gradle.kts` pinned
 Compose Compiler `1.5.4` (Kotlin 1.9.20 only) against Kotlin 1.9.25. Bumped to
 `1.5.15`, the paired release.
 
-## Remaining: `SelfHealingCognitiveSystem.kt` (14 errors) — needs a decision
+## Self-healing recovery semantics (implemented)
 
-It calls 14 methods that don't exist, and they can't be added as mechanical fixes:
+`SelfHealingCognitiveSystem` called 14 methods that existed only in
+`cognitive/extensions/Phase7Extensions.kt`, which nothing imported. That file was a
+stub layer: the engine/ECAN functions were no-ops (recovery still reported success),
+and its `Hypergraph` functions ran against a separate global atom map rather than the
+real graph. Its `removeOrphanedAtoms()` would have deleted most non-LINK atoms. It has
+been replaced with real implementations on the owning classes and removed.
 
-| Calls | Problem |
+| Self-healing action | What it now does |
 |---|---|
-| `ecanKernel.getQueueStatus()`, `drainLowPriorityTasks()`, `cancelStalledTasks()` | `ECANKernel` has no task queue. The queue lives in `ECANScheduler`, which this class doesn't reference. |
-| `hypergraph.findOrphanedAtoms()` / `removeOrphanedAtoms()` | Atoms hold no references in this model, so "atoms with invalid references" can't occur. The real integrity gap is the opposite: `Hypergraph.removeAtom()` leaves **dangling links**. |
-| `hypergraph.detectCircularReferences()` / `breakCircularReferences()` | Links are undirected hyperedges; a cycle (A–B–C–A) is ordinary structure, not corruption. Auto-"breaking" cycles would delete valid links. |
-| `cognitiveEngine.normalizeAttention / applyAttentionSmoothing / decayHighAttention` | Feasible (attention values live on atoms), but each needs a defined formula. |
-| `cognitiveEngine.resetTensor(index) / clampAllTensors() / clearCaches()`, `hypergraph.compactStorage()` | `CognitiveEngine` has no indexed tensor store or caches to act on. |
+| Hypergraph inconsistency | Finds/removes **dangling links** (links naming deleted atoms; `removeAtom` never cleaned them). Atoms hold no references, so "orphaned atoms" isn't a defect in this model. |
+| "Circular references" | Finds/repairs **self-referential links** (same atom listed twice): targets de-duplicated, links left with < 2 atoms removed. Cycles across distinct atoms are normal and untouched. |
+| Queue overflow / stalls | On `ECANScheduler` (where the queue lives; `SelfHealingCognitiveSystem` now takes the scheduler instead of `ECANKernel`). Drains the lowest-priority fraction; cancels tasks queued longer than `stallTimeoutMs` (same definition for detection and cancellation). |
+| Attention drift / instability / saturation | Act on atom STI over the same active-atom set the detector measures: z-score rescale to baseline; smoothing toward the mean; decay above the detector's saturation threshold. |
+| Tensor corruption / bounds | Tensors are derived from atoms. Reset non-finite truth/attention values (re-checked first, index drift reports failure); clamp to `TruthValue` [0, 1] and STI/LTI >= 0. |
+| Memory pressure | Clears the scheduler's completed-task history and rebuilds hypergraph maps to size. |
 
-Several of these are destructive and would run automatically from a monitoring loop,
-so their semantics (what may be deleted, when) are a product decision. The only
-caller is `Phase7Demo`.
+The tensor bounds check previously required depth and STI/LTI in [0, 1], but depth is a
+per-type constant up to 4.0 and STI/LTI are unbounded. It flagged valid atoms forever,
+and clamping them would have crushed ECAN attention data; it now follows the model's
+own validity rules.
 
 ## Design decisions made on this branch
 
@@ -60,6 +68,7 @@ the individual commit messages.
 
 - Android CI (`.github/workflows/android-ci.yml`) has failed on every `main` run since
   2026-01-22. Logs have expired, so the cause can't be confirmed; the Compose
-  mismatch above would fail `assembleDebug` on its own.
+  mismatch above would fail `assembleDebug` on its own. `./gradlew test` (CI's other
+  step) is still blocked by the test-compilation errors.
 - Native JNI bindings in `docs/TOGAI_GENERALIZATION_ROADMAP.md` remain stubs (no
   `.so` files or native build wiring).
