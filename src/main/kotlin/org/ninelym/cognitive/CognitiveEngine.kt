@@ -5,6 +5,8 @@ import org.ninelym.cognitive.hypergraph.Atom
 import org.ninelym.cognitive.hypergraph.AtomType
 import org.ninelym.cognitive.hypergraph.TruthValue
 import org.ninelym.cognitive.hypergraph.AttentionValue
+import org.ninelym.cognitive.hypergraph.HyperLink
+import org.ninelym.cognitive.hypergraph.LinkType
 import org.ninelym.cognitive.scheme.SchemeCognitiveGrammar
 import org.ninelym.cognitive.tensor.TensorFragmentProcessor
 import org.ninelym.cognitive.verification.CognitiveVerificationSystem
@@ -115,6 +117,33 @@ class CognitiveEngine {
         } catch (e: Exception) {
             ProcessingResult.failure("Failed to add atom ${atom.id}: ${e.message}")
         }
+    }
+
+    /**
+     * Link two existing atoms with a named relation. The label is kept in the
+     * link id; EVALUATION is the default type because an EvaluationLink is a
+     * predicate-labelled relation between atoms.
+     */
+    fun addLink(
+        sourceId: String,
+        targetId: String,
+        label: String,
+        type: LinkType = LinkType.EVALUATION
+    ): ProcessingResult {
+        val link = HyperLink(
+            id = "$label:$sourceId:$targetId",
+            type = type,
+            targets = listOf(sourceId, targetId)
+        )
+        return if (hypergraph.addLink(link)) {
+            ProcessingResult.success(message = "Linked $sourceId -[$label]-> $targetId")
+        } else {
+            ProcessingResult.failure("Cannot link $sourceId -> $targetId: both atoms must exist")
+        }
+    }
+
+    fun runAttentionCycle(): org.ninelym.cognitive.ecan.AttentionAllocationResult {
+        return ecanKernel.runAttentionCycle()
     }
 
     /**
