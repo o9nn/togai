@@ -75,16 +75,8 @@ class TaskerPluginService {
         activeInferences[taskId] = task
         
         return try {
-            // Perform inference
-            val context = mutableListOf<String>()
-            if (contextId != null) {
-                // Load context
-                context.add("Context: $contextId")
-            }
-            
-            val response = inferenceService.performInference(context, prompt) { token ->
-                // Progress callback
-            }
+            val fullPrompt = if (contextId != null) "Context: $contextId\n$prompt" else prompt
+            val response = inferenceService.infer(fullPrompt).map { it.text }
             
             activeInferences[taskId]?.let { it.copy(status = TaskStatus.COMPLETED) }
             activeInferences.remove(taskId)
@@ -149,7 +141,7 @@ class TaskerPluginService {
      * Trigger event
      */
     private fun triggerEvent(eventId: String, data: Map<String, String>) {
-        events[eventId]?.trigger(data)
+        events[eventId]?.trigger?.invoke(data)
     }
     
     /**
