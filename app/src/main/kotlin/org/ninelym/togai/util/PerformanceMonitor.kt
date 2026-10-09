@@ -18,7 +18,9 @@ object PerformanceMonitor {
     @PublishedApi
     internal const val TAG = "TogaiPerformance"
     private val metrics = ConcurrentHashMap<String, PerformanceMetric>()
+    // JVM name avoids clashing with the public setEnabled(Boolean) below
     @PublishedApi
+    @set:JvmName("setEnabledInternal")
     internal var isEnabled = BuildConfig.DEBUG
     
     /**

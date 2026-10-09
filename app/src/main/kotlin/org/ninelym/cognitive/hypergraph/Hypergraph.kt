@@ -9,8 +9,8 @@ import kotlin.math.pow
  * and manipulating cognitive primitives and their relationships
  */
 class Hypergraph {
-    private val atoms = mutableMapOf<String, Atom>()
-    private val links = mutableMapOf<String, HyperLink>()
+    private var atoms = mutableMapOf<String, Atom>()
+    private var links = mutableMapOf<String, HyperLink>()
     
     /**
      * Add an atom to the hypergraph
@@ -71,9 +71,59 @@ class Hypergraph {
      * Convert atoms in attention range to cognitive tensors
      */
     fun getActiveTensors(minAttention: Float = 0.3f): List<org.ninelym.cognitive.CognitiveTensor> {
-        return atoms.values
-            .filter { it.attentionValue.totalImportance() >= minAttention }
-            .map { it.toCognitiveTensor() }
+        return getActiveAtoms(minAttention).map { it.toCognitiveTensor() }
+    }
+
+    /**
+     * Atoms whose total importance meets the threshold, in the same order getActiveTensors uses
+     */
+    fun getActiveAtoms(minAttention: Float = 0.3f): List<Atom> {
+        return atoms.values.filter { it.attentionValue.totalImportance() >= minAttention }
+    }
+
+    /**
+     * Links that reference at least one atom no longer in the graph.
+     * removeAtom() does not remove links, so these accumulate after deletions.
+     */
+    fun findDanglingLinks(): List<String> {
+        return links.values.filter { link -> link.targets.any { it !in atoms } }.map { it.id }
+    }
+
+    fun removeDanglingLinks(): Int {
+        val dangling = findDanglingLinks()
+        dangling.forEach { links.remove(it) }
+        return dangling.size
+    }
+
+    /**
+     * Links that list the same atom more than once among their targets.
+     * (Cycles across distinct atoms are ordinary hypergraph structure and are not reported.)
+     */
+    fun findSelfReferentialLinks(): List<String> {
+        return links.values.filter { it.targets.size != it.targets.toSet().size }.map { it.id }
+    }
+
+    /**
+     * De-duplicate self-referential link targets; a link left with fewer than two
+     * distinct atoms can't be a valid HyperLink and is removed. Returns links changed.
+     */
+    fun repairSelfReferentialLinks(): Int {
+        val ids = findSelfReferentialLinks()
+        ids.forEach { id ->
+            val link = links[id] ?: return@forEach
+            val distinct = link.targets.distinct()
+            if (distinct.size >= 2) links[id] = link.copy(targets = distinct) else links.remove(id)
+        }
+        return ids.size
+    }
+
+    /**
+     * Rebuild the backing maps so their capacity matches their current size
+     * (hash maps don't shrink after removals).
+     */
+    fun compactStorage() {
+        atoms = LinkedHashMap(atoms)
+        links = LinkedHashMap(links)
     }
     
     /**

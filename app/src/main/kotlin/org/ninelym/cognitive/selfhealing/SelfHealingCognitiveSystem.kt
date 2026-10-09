@@ -4,7 +4,7 @@ import org.ninelym.cognitive.CognitiveEngine
 import org.ninelym.cognitive.CognitiveTensor
 import org.ninelym.cognitive.hypergraph.Hypergraph
 import org.ninelym.cognitive.hypergraph.Atom
-import org.ninelym.cognitive.ecan.ECANKernel
+import org.ninelym.cognitive.ecan.ECANScheduler
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import java.util.concurrent.ConcurrentHashMap
@@ -28,7 +28,7 @@ import kotlin.math.sqrt
 class SelfHealingCognitiveSystem(
     private val cognitiveEngine: CognitiveEngine,
     private val hypergraph: Hypergraph,
-    private val ecanKernel: ECANKernel,
+    private val ecanScheduler: ECANScheduler,
     private val config: SelfHealingConfig = SelfHealingConfig()
 ) {
 
@@ -440,31 +440,32 @@ class SelfHealingCognitiveSystem(
     private fun checkHypergraphIntegrity(): List<AnomalyEvent> {
         val anomalies = mutableListOf<AnomalyEvent>()
 
-        // Check for orphaned atoms (atoms with invalid references)
-        val orphanedCount = hypergraph.findOrphanedAtoms().size
-        if (orphanedCount > config.maxOrphanedAtoms) {
+        // Check for dangling links (links referencing atoms that no longer exist)
+        val danglingCount = hypergraph.findDanglingLinks().size
+        if (danglingCount > config.maxDanglingLinks) {
             anomalies.add(AnomalyEvent(
                 id = "hypergraph-orphans-${System.currentTimeMillis()}",
                 type = AnomalyType.HYPERGRAPH_INCONSISTENCY,
                 severity = AnomalySeverity.MEDIUM,
                 timestamp = System.currentTimeMillis(),
-                description = "Found $orphanedCount orphaned atoms (threshold: ${config.maxOrphanedAtoms})",
+                description = "Found $danglingCount dangling links (threshold: ${config.maxDanglingLinks})",
                 affectedComponent = "hypergraph",
-                metrics = mapOf("orphanedCount" to orphanedCount.toFloat())
+                metrics = mapOf("danglingLinkCount" to danglingCount.toFloat())
             ))
         }
 
-        // Check for circular references
-        val circularRefs = hypergraph.detectCircularReferences()
-        if (circularRefs.isNotEmpty()) {
+        // Check for self-referential links (a link listing the same atom more than once).
+        // Cycles across distinct atoms are normal hypergraph structure and are not flagged.
+        val selfRefLinks = hypergraph.findSelfReferentialLinks()
+        if (selfRefLinks.isNotEmpty()) {
             anomalies.add(AnomalyEvent(
                 id = "hypergraph-circular-${System.currentTimeMillis()}",
                 type = AnomalyType.HYPERGRAPH_CIRCULAR_REF,
                 severity = AnomalySeverity.LOW,
                 timestamp = System.currentTimeMillis(),
-                description = "Detected ${circularRefs.size} circular reference chains",
+                description = "Detected ${selfRefLinks.size} self-referential links",
                 affectedComponent = "hypergraph",
-                metrics = mapOf("circularCount" to circularRefs.size.toFloat())
+                metrics = mapOf("selfReferentialLinkCount" to selfRefLinks.size.toFloat())
             ))
         }
 
@@ -478,7 +479,7 @@ class SelfHealingCognitiveSystem(
         val anomalies = mutableListOf<AnomalyEvent>()
 
         // Check task queue health
-        val queueStatus = ecanKernel.getQueueStatus()
+        val queueStatus = ecanScheduler.getQueueStatus(config.stallTimeoutMs)
         if (queueStatus.queueDepth > config.maxQueueDepth) {
             anomalies.add(AnomalyEvent(
                 id = "ecan-queue-${System.currentTimeMillis()}",
@@ -643,56 +644,60 @@ class SelfHealingCognitiveSystem(
     private fun recoverFromAttentionDrift(anomaly: AnomalyEvent): RecoveryResult {
         // Re-normalize attention values toward baseline
         val baseline = attentionBaseline ?: return RecoveryResult(false, "No baseline available", "attention-drift")
-        cognitiveEngine.normalizeAttention(baseline.mean, baseline.stdDev)
-        return RecoveryResult(true, "Attention normalized to baseline", "attention-drift")
+        val updated = cognitiveEngine.normalizeAttention(baseline.mean, baseline.stdDev)
+        return RecoveryResult(true, "Normalized attention of $updated atoms to baseline", "attention-drift")
     }
 
     private fun recoverFromAttentionInstability(anomaly: AnomalyEvent): RecoveryResult {
         // Apply smoothing to reduce variance
-        cognitiveEngine.applyAttentionSmoothing(config.smoothingFactor)
-        return RecoveryResult(true, "Applied attention smoothing", "attention-instability")
+        val updated = cognitiveEngine.applyAttentionSmoothing(config.smoothingFactor)
+        return RecoveryResult(true, "Smoothed attention of $updated atoms", "attention-instability")
     }
 
     private fun recoverFromAttentionSaturation(anomaly: AnomalyEvent): RecoveryResult {
         // Decay high attention values
-        cognitiveEngine.decayHighAttention(config.attentionDecayRate)
-        return RecoveryResult(true, "Applied attention decay", "attention-saturation")
+        val decayed = cognitiveEngine.decayHighAttention(config.attentionDecayRate, config.attentionSaturationThreshold)
+        return RecoveryResult(true, "Decayed attention of $decayed atoms", "attention-saturation")
     }
 
     private fun recoverFromTensorCorruption(anomaly: AnomalyEvent): RecoveryResult {
         // Reset corrupted tensors to safe defaults
         val tensorIndex = anomaly.metrics["tensorIndex"]?.toInt() ?: return RecoveryResult(false, "Unknown tensor", "tensor-corruption")
-        cognitiveEngine.resetTensor(tensorIndex)
-        return RecoveryResult(true, "Reset corrupted tensor $tensorIndex", "tensor-corruption")
+        val repaired = cognitiveEngine.resetTensor(tensorIndex)
+        return if (repaired) {
+            RecoveryResult(true, "Reset corrupted tensor $tensorIndex", "tensor-corruption")
+        } else {
+            RecoveryResult(false, "Tensor $tensorIndex no longer corrupt or no longer present", "tensor-corruption")
+        }
     }
 
     private fun recoverFromTensorBounds(anomaly: AnomalyEvent): RecoveryResult {
         // Clamp tensor values to valid range
-        cognitiveEngine.clampAllTensors()
-        return RecoveryResult(true, "Clamped tensor values to valid range", "tensor-bounds")
+        val clamped = cognitiveEngine.clampAllTensors()
+        return RecoveryResult(true, "Clamped $clamped atoms to valid truth/attention ranges", "tensor-bounds")
     }
 
     private fun recoverFromHypergraphInconsistency(anomaly: AnomalyEvent): RecoveryResult {
-        // Remove orphaned atoms
-        val removed = hypergraph.removeOrphanedAtoms()
-        return RecoveryResult(true, "Removed $removed orphaned atoms", "hypergraph-inconsistency")
+        // Remove links that reference deleted atoms
+        val removed = hypergraph.removeDanglingLinks()
+        return RecoveryResult(true, "Removed $removed dangling links", "hypergraph-inconsistency")
     }
 
     private fun recoverFromCircularRefs(anomaly: AnomalyEvent): RecoveryResult {
-        // Break circular reference chains
-        val broken = hypergraph.breakCircularReferences()
-        return RecoveryResult(true, "Broke $broken circular reference chains", "circular-refs")
+        // De-duplicate self-referential link targets (links left with < 2 atoms are removed)
+        val repaired = hypergraph.repairSelfReferentialLinks()
+        return RecoveryResult(true, "Repaired $repaired self-referential links", "circular-refs")
     }
 
     private fun recoverFromQueueOverflow(anomaly: AnomalyEvent): RecoveryResult {
         // Drain low-priority tasks from queue
-        val drained = ecanKernel.drainLowPriorityTasks(config.drainRatio)
+        val drained = ecanScheduler.drainLowPriorityTasks(config.drainRatio)
         return RecoveryResult(true, "Drained $drained low-priority tasks", "queue-overflow")
     }
 
     private fun recoverFromTaskStall(anomaly: AnomalyEvent): RecoveryResult {
         // Cancel stalled tasks
-        val cancelled = ecanKernel.cancelStalledTasks(config.stallTimeoutMs)
+        val cancelled = ecanScheduler.cancelStalledTasks(config.stallTimeoutMs)
         return RecoveryResult(true, "Cancelled $cancelled stalled tasks", "task-stall")
     }
 
@@ -701,7 +706,7 @@ class SelfHealingCognitiveSystem(
         System.gc()
         cognitiveEngine.clearCaches()
         hypergraph.compactStorage()
-        return RecoveryResult(true, "Cleared caches and requested GC", "memory-pressure")
+        return RecoveryResult(true, "Cleared task history, compacted hypergraph storage, requested GC", "memory-pressure")
     }
 
     // ==================== Utility Functions ====================
@@ -799,7 +804,7 @@ data class SelfHealingConfig(
     val varianceExplosionThreshold: Float = 3.0f,
     val attentionSaturationThreshold: Float = 0.9f,
     val saturationRatioThreshold: Float = 0.5f,
-    val maxOrphanedAtoms: Int = 100,
+    val maxDanglingLinks: Int = 100,
     val maxQueueDepth: Int = 1000,
     val maxStalledTasks: Int = 10,
     val memoryPressureThreshold: Float = 0.85f,
@@ -1001,10 +1006,11 @@ private fun CognitiveTensor.hasInvalidValues(): Boolean {
 }
 
 /**
- * Check if tensor values are normalized (0-1 range)
+ * Check the atom-derived tensor against the model's validity rules: context (truth
+ * confidence) in [0, 1], salience/autonomyIndex (STI/LTI) >= 0. Modality and depth are
+ * fixed per-AtomType constants (depth goes up to 4.0) and STI/LTI are unbounded above,
+ * so a blanket [0, 1] check would flag valid atoms that no recovery can change.
  */
 private fun CognitiveTensor.isNormalized(): Boolean {
-    return listOf(modality, depth, context, salience, autonomyIndex).all {
-        it in 0f..1f
-    }
+    return context in 0f..1f && salience >= 0f && autonomyIndex >= 0f
 }

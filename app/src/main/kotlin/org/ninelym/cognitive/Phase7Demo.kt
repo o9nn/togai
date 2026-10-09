@@ -5,6 +5,7 @@ import org.ninelym.cognitive.hypergraph.Atom
 import org.ninelym.cognitive.hypergraph.AtomType
 import org.ninelym.cognitive.hypergraph.TruthValue
 import org.ninelym.cognitive.ecan.ECANKernel
+import org.ninelym.cognitive.ecan.ECANScheduler
 import org.ninelym.cognitive.selfhealing.*
 import org.ninelym.cognitive.distributed.*
 import org.ninelym.cognitive.neurosymbolic.*
@@ -94,7 +95,7 @@ class Phase7Demo {
         val selfHealing = SelfHealingCognitiveSystem(
             cognitiveEngine = cognitiveEngine,
             hypergraph = hypergraph,
-            ecanKernel = ecanKernel,
+            ecanScheduler = ECANScheduler(ecanKernel),
             config = SelfHealingConfig(
                 attentionMonitorIntervalMs = 1000,
                 autoRecoveryEnabled = true

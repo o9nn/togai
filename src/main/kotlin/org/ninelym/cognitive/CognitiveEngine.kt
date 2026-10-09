@@ -27,6 +27,9 @@ import org.ninelym.ai.ConversationContext
 import org.ninelym.ai.ImageStyle
 import org.ninelym.cognitive.unification.*
 
+/** Minimum total importance for an atom to appear in CognitiveState.tensors. */
+private const val ACTIVE_TENSOR_THRESHOLD = 0.1f
+
 /**
  * Main cognitive engine integrating Phase 1, 2, 5, and 6 components
  * 
@@ -151,6 +154,90 @@ class CognitiveEngine(
         return ecanKernel.runAttentionCycle()
     }
 
+    // ---- Self-healing operations ----
+    // CognitiveState.tensors are derived from atoms (salience = STI, autonomyIndex = LTI,
+    // context = truth confidence); there is no separate tensor store, so these act on atoms.
+
+    /** Rescale active atoms' STI so its mean/std match the target. Returns atoms updated. */
+    fun normalizeAttention(targetMean: Float, targetStdDev: Float): Int {
+        val active = hypergraph.getActiveAtoms(ACTIVE_TENSOR_THRESHOLD)
+        if (active.isEmpty()) return 0
+        val stis = active.map { it.attentionValue.sti }
+        val mean = stis.average().toFloat()
+        val std = Math.sqrt(stis.map { (it - mean) * (it - mean) }.average()).toFloat()
+        active.forEach { atom ->
+            val z = if (std > 0f) (atom.attentionValue.sti - mean) / std else 0f
+            val sti = (targetMean + z * targetStdDev).coerceAtLeast(0f)
+            hypergraph.updateAtomAttention(atom.id, atom.attentionValue.copy(sti = sti))
+        }
+        return active.size
+    }
+
+    /** Move each active atom's STI toward the current mean by [factor] (0..1). Returns atoms updated. */
+    fun applyAttentionSmoothing(factor: Float): Int {
+        val active = hypergraph.getActiveAtoms(ACTIVE_TENSOR_THRESHOLD)
+        if (active.isEmpty()) return 0
+        val f = factor.coerceIn(0f, 1f)
+        val mean = active.map { it.attentionValue.sti }.average().toFloat()
+        active.forEach { atom ->
+            val sti = atom.attentionValue.sti + f * (mean - atom.attentionValue.sti)
+            hypergraph.updateAtomAttention(atom.id, atom.attentionValue.copy(sti = sti))
+        }
+        return active.size
+    }
+
+    /** Scale STI by (1 - rate) for active atoms whose STI exceeds [threshold]. Returns atoms decayed. */
+    fun decayHighAttention(rate: Float, threshold: Float): Int {
+        val r = rate.coerceIn(0f, 1f)
+        val high = hypergraph.getActiveAtoms(ACTIVE_TENSOR_THRESHOLD).filter { it.attentionValue.sti > threshold }
+        high.forEach { atom ->
+            hypergraph.updateAtomAttention(atom.id, atom.attentionValue.copy(sti = atom.attentionValue.sti * (1 - r)))
+        }
+        return high.size
+    }
+
+    /**
+     * Reset the non-finite truth/attention values of the atom behind active tensor [index]
+     * (same order as CognitiveState.tensors). Re-checks first, since the list can change between
+     * detection and recovery. Returns true if the atom was repaired.
+     */
+    fun resetTensor(index: Int): Boolean {
+        val atom = hypergraph.getActiveAtoms(ACTIVE_TENSOR_THRESHOLD).getOrNull(index) ?: return false
+        val tv = atom.truthValue
+        val av = atom.attentionValue
+        val badTruth = !tv.strength.isFinite() || !tv.confidence.isFinite()
+        val badAttention = !av.sti.isFinite() || !av.lti.isFinite()
+        if (!badTruth && !badAttention) return false
+        return hypergraph.updateAtom(atom.copy(
+            truthValue = if (badTruth) TruthValue.DEFAULT else tv,
+            attentionValue = if (badAttention) AttentionValue.DEFAULT else av
+        ))
+    }
+
+    /**
+     * Clamp every atom to the TruthValue/AttentionValue validity rules: truth strength and
+     * confidence in [0, 1], STI/LTI >= 0. Returns atoms changed.
+     */
+    fun clampAllTensors(): Int {
+        var changed = 0
+        hypergraph.getAllAtoms().forEach { atom ->
+            val tv = atom.truthValue
+            val av = atom.attentionValue
+            val clampedTv = TruthValue(tv.strength.coerceIn(0f, 1f), tv.confidence.coerceIn(0f, 1f))
+            val clampedAv = AttentionValue(av.sti.coerceAtLeast(0f), av.lti.coerceAtLeast(0f))
+            if (clampedTv != tv || clampedAv != av) {
+                hypergraph.updateAtom(atom.copy(truthValue = clampedTv, attentionValue = clampedAv))
+                changed++
+            }
+        }
+        return changed
+    }
+
+    /** Clear the completed-task history held by this engine's scheduler. */
+    fun clearCaches() {
+        ecanScheduler.clearCompletedTasks()
+    }
+
     /**
      * Convert hypergraph atoms back to Scheme expression
      */
@@ -171,7 +258,7 @@ class CognitiveEngine(
      * Get current cognitive state as tensor collection
      */
     fun getCognitiveState(): CognitiveState {
-        val activeTensors = hypergraph.getActiveTensors(0.1f)
+        val activeTensors = hypergraph.getActiveTensors(ACTIVE_TENSOR_THRESHOLD)
         val activeFragments = tensorProcessor.getActiveFragments(0.1f)
         val verificationReport = verificationSystem.runSystemVerification(
             hypergraph, 
