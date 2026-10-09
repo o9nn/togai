@@ -3,6 +3,7 @@ package org.ninelym.cognitive.verification
 import org.ninelym.cognitive.CognitiveTensor
 import org.ninelym.cognitive.hypergraph.Atom
 import org.ninelym.cognitive.hypergraph.Hypergraph
+import org.ninelym.cognitive.hypergraph.HypergraphStats
 import org.ninelym.cognitive.tensor.TensorFragment
 
 /**

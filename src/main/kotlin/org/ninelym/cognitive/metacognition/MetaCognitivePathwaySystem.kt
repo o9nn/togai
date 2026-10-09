@@ -747,6 +747,8 @@ class MetaCognitivePathwaySystem(
         )
     }
     
+    fun getLatestIntrospection(): IntrospectionResult? = introspectionHistory.lastOrNull()
+
     private fun calculateSelfAwarenessLevel(): Float {
         val historyFactor = Math.min(introspectionHistory.size.toFloat() / 10.0f, 1.0f)
         val ruleFactor = Math.min(cognitiveRules.size.toFloat() / 50.0f, 1.0f)

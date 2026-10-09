@@ -672,7 +672,9 @@ class RecursiveVerificationSystem(
             averageRecursionDepth = averageDepth,
             verificationSuccessRate = successRate,
             activeFeedbackLoops = feedbackLoops.count { it.monitored },
-            totalFeedbackActions = feedbackLoops.size
+            totalFeedbackActions = feedbackLoops.size,
+            averageSystemHealth = if (verificationHistory.isEmpty()) 0.5f
+                else verificationHistory.map { it.systemHealth }.average().toFloat()
         )
     }
 }
@@ -738,7 +740,8 @@ data class RecursiveVerificationStats(
     val averageRecursionDepth: Float,
     val verificationSuccessRate: Float,
     val activeFeedbackLoops: Int,
-    val totalFeedbackActions: Int
+    val totalFeedbackActions: Int,
+    val averageSystemHealth: Float
 )
 
 enum class VerificationStatus {
