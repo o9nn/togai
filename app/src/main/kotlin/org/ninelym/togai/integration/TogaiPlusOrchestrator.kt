@@ -297,6 +297,15 @@ class TogaiPlusOrchestrator private constructor(
     private suspend fun executeLLMStep(
         action: String,
         params: Map<String, String>
+    ): Pair<Boolean, String> = try {
+        runLLMStep(action, params)
+    } catch (e: CogAIException) {
+        false to (e.message ?: "Model request failed")
+    }
+
+    private suspend fun runLLMStep(
+        action: String,
+        params: Map<String, String>
     ): Pair<Boolean, String> {
         return when (action.lowercase()) {
             "chat", "ask" -> {

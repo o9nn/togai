@@ -92,7 +92,7 @@ class OnDeviceAIProcessor(
     /**
      * Generate image using local stable diffusion model
      */
-    fun generateImage(
+    suspend fun generateImage(
         prompt: String,
         style: ImageStyle = ImageStyle.DEFAULT,
         character: Character? = null

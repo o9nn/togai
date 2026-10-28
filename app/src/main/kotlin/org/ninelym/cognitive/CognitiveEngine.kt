@@ -487,7 +487,7 @@ class CognitiveEngine(
     /**
      * Generate image through cognitive-enhanced AI pipeline
      */
-    fun generateImage(
+    suspend fun generateImage(
         prompt: String,
         style: ImageStyle = ImageStyle.DEFAULT,
         character: Character? = null

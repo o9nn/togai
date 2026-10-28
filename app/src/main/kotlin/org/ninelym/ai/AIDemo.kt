@@ -162,7 +162,7 @@ class AIDemo {
         }
     }
     
-    private fun demoImageGeneration() {
+    private fun demoImageGeneration() = runBlocking {
         println("\n🖼️  DEMO 2: Local Image Generation")
         println("-".repeat(40))
         
