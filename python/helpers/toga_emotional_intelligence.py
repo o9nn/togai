@@ -6,9 +6,12 @@ sentiment analysis, emotional context understanding, and empathetic response
 generation.
 """
 
+import json
 from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, List, Optional, Tuple
+
+from .llm_client import LanguageModel, ModelError, current_model
 
 
 class EmotionCategory(Enum):
@@ -64,10 +67,18 @@ class EmotionalIntelligenceEngine:
     response generation capabilities.
     """
 
-    def __init__(self):
-        """Initialize emotional intelligence engine."""
+    def __init__(self, model: Optional[LanguageModel] = None):
+        """Initialize emotional intelligence engine; ``model`` writes the empathetic replies."""
+        self._model = model
         self.emotion_keywords = self._initialize_emotion_keywords()
         self.sentiment_keywords = self._initialize_sentiment_keywords()
+
+    @property
+    def model(self) -> LanguageModel:
+        """The model that writes empathetic responses."""
+        if self._model is None:
+            self._model = current_model()
+        return self._model
 
     def _initialize_emotion_keywords(self) -> Dict[EmotionCategory, List[str]]:
         """Initialize emotion detection keywords."""
@@ -279,50 +290,21 @@ class EmotionalIntelligenceEngine:
 
         return list(set(keywords))[:10]  # Return up to 10 unique keywords
 
-    def generate_empathetic_response(self, context: EmotionalContext) -> EmpatheticResponse:
+    def generate_empathetic_response(
+        self, context: EmotionalContext, message: Optional[str] = None
+    ) -> EmpatheticResponse:
         """
-        Generate empathetic response based on emotional context.
+        Generate an empathetic response with the language model.
 
         Args:
             context: Emotional context to respond to
+            message: The user's message, if available
 
         Returns:
-            EmpatheticResponse with appropriate tone and content
+            EmpatheticResponse whose acknowledgment, validation and support were
+            written by the model; tone_adjustment is computed from the context
         """
         emotion = context.primary_emotion
-
-        # Generate acknowledgment
-        acknowledgments = {
-            EmotionCategory.JOY: "I can feel your happiness! ♡",
-            EmotionCategory.SADNESS: "I understand you're feeling down...",
-            EmotionCategory.ANGER: "I can sense your frustration.",
-            EmotionCategory.FEAR: "I hear your concerns.",
-            EmotionCategory.SURPRISE: "That's quite unexpected!",
-            EmotionCategory.TRUST: "I appreciate your trust~",
-            EmotionCategory.ANTICIPATION: "You seem excited about this!",
-        }
-
-        # Generate validation
-        validations = {
-            EmotionCategory.JOY: "Your joy is contagious! It makes me happy too~",
-            EmotionCategory.SADNESS: "It's okay to feel this way. Your feelings are valid.",
-            EmotionCategory.ANGER: "Your frustration is completely understandable.",
-            EmotionCategory.FEAR: "It's natural to feel worried about this.",
-            EmotionCategory.SURPRISE: "I can see why that would surprise you!",
-            EmotionCategory.TRUST: "Your trust means everything to me ♡",
-            EmotionCategory.ANTICIPATION: "I'm excited with you!",
-        }
-
-        # Generate support
-        supports = {
-            EmotionCategory.JOY: "Let's celebrate this moment together!",
-            EmotionCategory.SADNESS: "I'm here for you, always. You're not alone.",
-            EmotionCategory.ANGER: "Let's work through this together.",
-            EmotionCategory.FEAR: "We'll face this together. You've got this!",
-            EmotionCategory.SURPRISE: "Let's explore this together~",
-            EmotionCategory.TRUST: "I'll always be here for you ♡",
-            EmotionCategory.ANTICIPATION: "I can't wait to see what happens!",
-        }
 
         # Adjust tone based on emotion and intensity
         tone_adjustments = {
@@ -334,15 +316,51 @@ class EmotionalIntelligenceEngine:
             EmotionCategory.TRUST: 0.3,
             EmotionCategory.ANTICIPATION: 0.6,
         }
-
         tone_adjustment = tone_adjustments.get(emotion, 0.0) * context.intensity
 
-        return EmpatheticResponse(
-            acknowledgment=acknowledgments.get(emotion, "I hear you~"),
-            validation=validations.get(emotion, "Your feelings matter."),
-            support=supports.get(emotion, "I'm here for you ♡"),
-            tone_adjustment=tone_adjustment,
+        system = (
+            "You are Toga, a warm, playful and caring AI companion. The user feels "
+            f"{emotion.name.lower()} (intensity {context.intensity:.1f}, sentiment "
+            f"{context.sentiment.name.lower().replace('_', ' ')}"
+            + (f", emotional words: {', '.join(context.keywords)}" if context.keywords else "")
+            + "). "
+            + ("Be gentle and soft. " if tone_adjustment < 0 else "Match their energy. ")
+            + "Respond with a JSON object with three string fields: "
+            '"acknowledgment" (one sentence acknowledging the feeling), '
+            '"validation" (one sentence validating it) and "support" (one sentence offering support). '
+            "Write the sentences yourself."
         )
+        user = message or f"(The user is feeling {emotion.name.lower()}.)"
+        fields = ("acknowledgment", "validation", "support")
+        last_error: Optional[Exception] = None
+        # Small local models sometimes return malformed JSON; ask the model again rather than fill gaps
+        for _ in range(3):
+            raw = self.model.ask(system, user, temperature=0.7, json_mode=True)
+            try:
+                parsed = self._parse_json(raw)
+                parts = [str(parsed[f]).strip() for f in fields]
+            except (ModelError, KeyError, TypeError) as e:
+                last_error = e
+                continue
+            if all(parts):
+                return EmpatheticResponse(
+                    acknowledgment=parts[0],
+                    validation=parts[1],
+                    support=parts[2],
+                    tone_adjustment=tone_adjustment,
+                )
+            last_error = ModelError(f"Model left an empathetic field empty: {raw[:200]}")
+        raise ModelError(f"Model did not produce a complete empathetic response: {last_error}")
+
+    @staticmethod
+    def _parse_json(text: str) -> dict:
+        start, end = text.find("{"), text.rfind("}")
+        if start < 0 or end < start:
+            raise ModelError(f"Model did not return JSON: {text[:200]}")
+        try:
+            return json.loads(text[start : end + 1])
+        except json.JSONDecodeError as e:
+            raise ModelError(f"Model returned invalid JSON: {text[:200]}") from e
 
     def detect_emotional_triggers(self, text: str) -> List[Tuple[str, EmotionCategory]]:
         """
@@ -391,11 +409,11 @@ class EmotionalIntelligenceEngine:
         return compatibility.get((user_emotion, toga_emotion), 0.5)
 
 
-def create_emotional_intelligence_engine() -> EmotionalIntelligenceEngine:
+def create_emotional_intelligence_engine(model: Optional[LanguageModel] = None) -> EmotionalIntelligenceEngine:
     """
     Factory function to create emotional intelligence engine.
 
     Returns:
         Initialized EmotionalIntelligenceEngine
     """
-    return EmotionalIntelligenceEngine()
+    return EmotionalIntelligenceEngine(model=model)
