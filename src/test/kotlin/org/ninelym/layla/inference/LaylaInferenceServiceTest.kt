@@ -4,19 +4,27 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Test
 import org.junit.Before
 import org.junit.After
+import org.junit.Assume.assumeTrue
+import org.ninelym.llm.ModelEndpointConfig
+import org.ninelym.llm.OpenAICompatibleModel
 import kotlin.test.*
 
 /**
- * Tests for LaylaInferenceService
+ * Tests for LaylaInferenceService. Replies come from a real served model
+ * (TOGAI_LLM_BASE_URL / TOGAI_LLM_MODEL); model-dependent tests are skipped without one.
  */
 class LaylaInferenceServiceTest {
     
     private lateinit var service: LaylaInferenceService
+    private val config = ModelEndpointConfig.fromEnvironment()
     
     @Before
     fun setup() {
-        service = LaylaInferenceService()
+        service = config?.let { c -> LaylaInferenceService({ Result.success(OpenAICompatibleModel(c)) }) }
+            ?: LaylaInferenceService({ Result.failure(org.ninelym.llm.ModelNotConfiguredException()) })
     }
+    
+    private fun requireModel() = assumeTrue("no live model configured", config != null)
     
     @After
     fun teardown() {
@@ -25,12 +33,14 @@ class LaylaInferenceServiceTest {
     
     @Test
     fun `test service initialization`() = runBlocking {
+        requireModel()
         val result = service.initialize()
         assertTrue(result.isSuccess, "Service should initialize successfully")
     }
     
     @Test
     fun `test model state transitions`() = runBlocking {
+        requireModel()
         service.initialize()
         
         // Initial state should be Ready after initialization
@@ -40,6 +50,7 @@ class LaylaInferenceServiceTest {
     
     @Test
     fun `test conversation history management`() = runBlocking {
+        requireModel()
         service.initialize()
         
         // History should be empty initially
@@ -56,6 +67,7 @@ class LaylaInferenceServiceTest {
     
     @Test
     fun `test clear history`() = runBlocking {
+        requireModel()
         service.initialize()
         service.infer("Test prompt")
         
@@ -65,8 +77,10 @@ class LaylaInferenceServiceTest {
     }
     
     @Test
-    fun `test inference without initialization should fail`() = runBlocking {
-        val result = service.infer("Test prompt")
-        assertTrue(result.isFailure, "Inference should fail without initialization")
+    fun `test inference without a model fails instead of answering`() = runBlocking {
+        val unconfigured = LaylaInferenceService({ Result.failure(org.ninelym.llm.ModelNotConfiguredException()) })
+        val result = unconfigured.infer("Test prompt")
+        assertTrue(result.isFailure, "Inference must fail when no model is available")
+        assertTrue(unconfigured.getHistory().isEmpty())
     }
 }

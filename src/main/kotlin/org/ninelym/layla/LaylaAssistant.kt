@@ -84,15 +84,17 @@ class LaylaAssistant {
     private val voiceInputService = VoiceInputService()
     private val voiceOutputService = VoiceOutputService()
     private val characterService = EnhancedCharacterService()
-    private val taskerService = TaskerPluginService()
+    private val taskerService = TaskerPluginService(inferenceService)
     private val calendarService = CalendarService()
     private val taskManagerService = EnhancedTaskManagerService()
     
     // Phase 3 Integration services
     private val documentService = DocumentProcessingService()
     private val billingService = BillingService()
-    private val sharingService = SharingService()
-    private val advancedWorkflowService = AdvancedTaskerWorkflowService()
+    private val sharingService = SharingService(conversations = { chatService.getConversation(it) })
+    private val advancedWorkflowService = AdvancedTaskerWorkflowService(
+        notifier = { message -> notificationService.showSimpleNotification("Layla workflow", message, "task_completion") }
+    )
     private val cloudSyncService = CloudSyncService()
     
     // Phase 4 Polish & Scale services
@@ -332,6 +334,12 @@ class LaylaAssistant {
             Result.failure(result.exceptionOrNull() ?: Exception("Failed to send message"))
         }
     }
+    
+    /**
+     * Ask Layla directly and get the model's reply text
+     */
+    suspend fun reply(message: String): Result<String> =
+        inferenceService.infer(message).map { it.text }
     
     /**
      * Remember text (text processing feature)
@@ -651,12 +659,18 @@ suspend fun main() {
             delay(1000)
             val transcript = voiceInput.stopRecording(recordSession.getOrThrow())
             if (transcript.isSuccess) {
-                println("  ✅ Transcribed: \"${transcript.getOrThrow().text}\"")
+                val heard = transcript.getOrThrow().text
+                println("  ✅ Transcribed: \"$heard\"")
                 
-                // Test TTS
-                println("  Speaking response...")
-                voiceOutput.speak("Hello! I understood your voice input perfectly.")
-                println("  ✅ Voice output completed")
+                // Speak Layla's model-generated reply to what was heard
+                layla.reply(heard).onSuccess { answer ->
+                    println("  Speaking response: $answer")
+                    voiceOutput.speak(answer)
+                        .onSuccess { println("  ✅ Voice output completed") }
+                        .onFailure { println("  ❌ Voice output failed: ${it.message}") }
+                }.onFailure { println("  ❌ Model reply failed: ${it.message}") }
+            } else {
+                println("  ❌ Transcription failed: ${transcript.exceptionOrNull()?.message}")
             }
         }
         println()
@@ -671,9 +685,12 @@ suspend fun main() {
         characterService.setActiveCharacter("creative")
         println("  ✅ Active character: Aria (Creative Companion)")
         
-        println("  Setting character expression...")
-        characterService.setExpression("creative", org.ninelym.layla.character.Expression.HAPPY)
-        println("  ✅ Expression set to HAPPY")
+        println("  Syncing expression with a model-generated line...")
+        layla.reply("Say one excited sentence about painting.").onSuccess { line ->
+            characterService.syncWithSpeech("creative", line)
+                .onSuccess { println("  ✅ \"$line\" -> expression chosen by the model") }
+                .onFailure { println("  ❌ Expression sync failed: ${it.message}") }
+        }.onFailure { println("  ❌ Model reply failed: ${it.message}") }
         
         println("  Available characters:")
         characterService.getAvailableCharacters().forEach { char ->
@@ -782,7 +799,7 @@ suspend fun main() {
             val answerResult = docService.askQuestion(doc.id, "What is the main topic?")
             if (answerResult.isSuccess) {
                 val answer = answerResult.getOrThrow()
-                println("  ✅ Question answered (${answer.confidence * 100}% confidence)")
+                println("  ✅ Answer: ${answer.answer}")
             }
         }
         println()

@@ -448,7 +448,7 @@ class CognitiveEngine(
     /**
      * Process natural language through cognitive AI pipeline
      */
-    fun processNaturalLanguage(
+    suspend fun processNaturalLanguage(
         input: String,
         character: Character? = null,
         context: ConversationContext = ConversationContext.DEFAULT
@@ -487,7 +487,7 @@ class CognitiveEngine(
     /**
      * Generate image through cognitive-enhanced AI pipeline
      */
-    fun generateImage(
+    suspend fun generateImage(
         prompt: String,
         style: ImageStyle = ImageStyle.DEFAULT,
         character: Character? = null

@@ -1,5 +1,6 @@
 package org.ninelym.ai
 
+import org.ninelym.llm.PersonaPrompt
 import org.ninelym.cognitive.CognitiveTensor
 import java.util.concurrent.ConcurrentHashMap
 
@@ -394,7 +395,8 @@ data class Character(
     val isCustom: Boolean,
     var autonomyLevel: Float = 0.5f,
     
-    // Response patterns
+    // Voice examples per register. These are style hints in the model's persona prompt
+    // (see toPersonaPrompt); they are never shown to the user as the character's reply.
     var standardResponses: MutableList<String> = mutableListOf(),
     var creativeResponses: MutableList<String> = mutableListOf(),
     var empathicResponses: MutableList<String> = mutableListOf(),
@@ -481,3 +483,15 @@ data class InteractionRecord(
     val sentimentScore: Float,
     val topicKeywords: List<String>
 )
+
+/**
+ * System prompt that makes the language model speak as this character.
+ */
+fun Character.toPersonaPrompt(): PersonaPrompt = PersonaPrompt(
+    name = name,
+    description = personality,
+    traits = traits.toMap(),
+    backstory = backstory.takeIf { it.isNotBlank() },
+    styleHints = (standardResponses + creativeResponses + empathicResponses + creativeEmpathicResponses).distinct().take(8)
+)
+

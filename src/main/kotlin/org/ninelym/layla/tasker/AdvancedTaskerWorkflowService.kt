@@ -3,6 +3,10 @@ package org.ninelym.layla.tasker
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import org.ninelym.llm.GenerationOptions
+import org.ninelym.llm.LanguageModel
+import org.ninelym.llm.LanguageModels
+import org.ninelym.llm.ask
 
 /**
  * Advanced Tasker Workflows Service
@@ -20,7 +24,11 @@ import kotlinx.coroutines.flow.asStateFlow
  * 
  * Phase 3: Integration
  */
-class AdvancedTaskerWorkflowService {
+class AdvancedTaskerWorkflowService(
+    private val modelProvider: () -> Result<LanguageModel> = { LanguageModels.current() },
+    /** Delivers SendNotification steps; returns the notification id. */
+    private val notifier: (suspend (message: String) -> Result<String>)? = null
+) {
     
     // State flows for reactive updates
     private val _workflows = MutableStateFlow<List<Workflow>>(emptyList())
@@ -142,11 +150,15 @@ class AdvancedTaskerWorkflowService {
         return when (step.action) {
             is WorkflowAction.AIInference -> {
                 val prompt = substituteVariables(step.action.prompt, context)
-                "AI response to: $prompt"
+                modelProvider().getOrThrow().ask(
+                    "You are a step in an automation workflow. Reply with just the result.",
+                    prompt
+                ).getOrThrow()
             }
             is WorkflowAction.SendNotification -> {
                 val message = substituteVariables(step.action.message, context)
-                "Notification sent: $message"
+                val send = notifier ?: throw IllegalStateException("No notifier configured for SendNotification steps")
+                send(message).getOrThrow()
             }
             is WorkflowAction.Custom -> {
                 step.action.execute(context)
@@ -164,7 +176,7 @@ class AdvancedTaskerWorkflowService {
     /**
      * Evaluate a condition
      */
-    private fun evaluateCondition(
+    private suspend fun evaluateCondition(
         condition: WorkflowCondition,
         context: Map<String, Any>,
         results: Map<String, Any?>
@@ -193,12 +205,21 @@ class AdvancedTaskerWorkflowService {
     }
     
     /**
-     * Make an AI-powered decision
+     * Make an AI-powered decision: the model answers the yes/no question given the context
      */
-    private fun makeAIDecision(prompt: String, context: Map<String, Any>): Boolean {
-        // Placeholder: In production, use AI inference service
-        // For now, return a simple heuristic
-        return prompt.contains("yes") || prompt.contains("true")
+    private suspend fun makeAIDecision(prompt: String, context: Map<String, Any>): Boolean {
+        val question = substituteVariables(prompt, context)
+        val facts = context.entries.joinToString("\n") { "${it.key}: ${it.value}" }
+        val answer = modelProvider().getOrThrow().ask(
+            "Decide a workflow condition. Answer with exactly YES or NO.",
+            (if (facts.isNotBlank()) "Context:\n$facts\n\n" else "") + "Question: $question",
+            GenerationOptions(temperature = 0f, maxTokens = 3)
+        ).getOrThrow().trim().uppercase()
+        return when {
+            answer.startsWith("YES") -> true
+            answer.startsWith("NO") -> false
+            else -> throw IllegalStateException("Model gave no yes/no decision: $answer")
+        }
     }
     
     /**
