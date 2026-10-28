@@ -194,6 +194,65 @@ class OpenAICompatibleModel(
             }
         }
 
+    /**
+     * Vision chat: asks the model about an image using OpenAI-style `image_url` content parts.
+     * Requires a multimodal model (e.g. llava / qwen2-vl served by llama.cpp or Ollama).
+     */
+    suspend fun describeImage(
+        image: ByteArray,
+        prompt: String,
+        mimeType: String = "image/png",
+        options: GenerationOptions = GenerationOptions()
+    ): Result<String> = withContext(Dispatchers.IO) {
+        runCatching {
+            val dataUrl = "data:$mimeType;base64," + Base64.getEncoder().encodeToString(image)
+            val body = buildJsonObject {
+                put("model", config.model)
+                put("messages", buildJsonArray {
+                    add(buildJsonObject {
+                        put("role", "user")
+                        put("content", buildJsonArray {
+                            add(buildJsonObject { put("type", "text"); put("text", prompt) })
+                            add(buildJsonObject {
+                                put("type", "image_url")
+                                put("image_url", buildJsonObject { put("url", dataUrl) })
+                            })
+                        })
+                    })
+                })
+                put("temperature", options.temperature)
+                put("max_tokens", options.maxTokens)
+            }
+            execute(authorized(Request.Builder().url("$base/chat/completions")).post(body.toString().toRequestBody(jsonType)).build()).use { response ->
+                if (!response.isSuccessful) {
+                    throw ModelResponseException("Vision request failed: HTTP ${response.code}: ${response.body?.string()?.take(500)}")
+                }
+                readCompletion(response).ifBlank { throw ModelResponseException("Model returned an empty response") }
+            }
+        }
+    }
+
+    /** Image editing via `POST /images/edits`; returns decoded image bytes. */
+    suspend fun editImage(image: File, prompt: String, size: String = "512x512", model: String = config.model): Result<ByteArray> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val form = MultipartBody.Builder().setType(MultipartBody.FORM)
+                    .addFormDataPart("model", model)
+                    .addFormDataPart("prompt", prompt)
+                    .addFormDataPart("size", size)
+                    .addFormDataPart("response_format", "b64_json")
+                    .addFormDataPart("image", image.name, image.asRequestBody("image/png".toMediaType()))
+                    .build()
+                execute(authorized(Request.Builder().url("$base/images/edits")).post(form).build()).use { response ->
+                    if (!response.isSuccessful) throw ModelResponseException("Image edit failed: HTTP ${response.code}")
+                    val first = json.parseToJsonElement(response.body!!.string()).jsonObject["data"]?.jsonArray?.firstOrNull()?.jsonObject
+                        ?: throw ModelResponseException("Image response had no data")
+                    Base64.getDecoder().decode(first["b64_json"]?.jsonPrimitive?.contentOrNull
+                        ?: throw ModelResponseException("Image response had no b64_json"))
+                }
+            }
+        }
+
     private fun authorized(builder: Request.Builder): Request.Builder =
         config.apiKey?.let { builder.header("Authorization", "Bearer $it") } ?: builder
 
