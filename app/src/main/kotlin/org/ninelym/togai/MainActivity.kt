@@ -13,6 +13,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import org.ninelym.evolution.LanguageResult
+import org.ninelym.evolution.Modality
 import org.ninelym.evolution.MultimodalRequest
 import org.ninelym.optimization.MemoryState
 
@@ -63,6 +65,7 @@ fun MainScreen(app: TogaiApplication) {
     var libraryStats by remember { mutableStateOf("Loading...") }
     var aiCapabilities by remember { mutableStateOf("Initializing...") }
     var isProcessing by remember { mutableStateOf(false) }
+    var testReply by remember { mutableStateOf<String?>(null) }
     
     // Collect memory state
     LaunchedEffect(Unit) {
@@ -174,8 +177,11 @@ fun MainScreen(app: TogaiApplication) {
                             )
                             val response = app.multimodalOrchestrator.processMultimodal(request)
                             android.util.Log.i("MainActivity", "Test result: ${response.success}")
+                            testReply = (response.results[Modality.LANGUAGE] as? LanguageResult)?.response
+                                ?: "Error: ${response.error ?: "no language model is serving"}"
                         } catch (e: Exception) {
                             android.util.Log.e("MainActivity", "Test failed", e)
+                            testReply = "Error: ${e.message}"
                         } finally {
                             isProcessing = false
                         }
@@ -186,6 +192,8 @@ fun MainScreen(app: TogaiApplication) {
             ) {
                 Text(if (isProcessing) "Processing..." else "Test AI System")
             }
+
+            testReply?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
         }
     }
 }

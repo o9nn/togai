@@ -9,7 +9,11 @@ import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.*
 import org.ninelym.togai.R
 import org.ninelym.togai.TogaiApplication
+import org.ninelym.evolution.ImageResult
+import org.ninelym.evolution.LanguageResult
+import org.ninelym.evolution.Modality
 import org.ninelym.evolution.MultimodalRequest
+import org.ninelym.evolution.SpeechResult
 
 /**
  * Foreground service for AI inference operations
@@ -73,12 +77,11 @@ class AIInferenceService : Service() {
                 
                 if (response.success) {
                     val result = buildString {
-                        appendLine("Processing successful")
-                        appendLine("Modalities: ${response.results.size}")
-                        if (response.fusedResult != null) {
-                            appendLine("Confidence: ${response.fusedResult.overallConfidence}")
-                        }
-                    }
+                        (response.results[Modality.SPEECH] as? SpeechResult)?.let { appendLine("Transcription: ${it.transcription}") }
+                        (response.results[Modality.LANGUAGE] as? LanguageResult)?.let { appendLine(it.response) }
+                        (response.results[Modality.IMAGE] as? ImageResult)?.let { appendLine("Image: ${it.imagePath}") }
+                        response.fusedResult?.overallConfidence?.let { appendLine("Confidence: $it") }
+                    }.trimEnd()
                     updateNotification("Processing complete")
                     callback(true, result)
                 } else {

@@ -1,5 +1,6 @@
 package org.ninelym.ai
 
+import kotlinx.coroutines.runBlocking
 import org.ninelym.cognitive.CognitiveEngine
 
 /**
@@ -108,7 +109,7 @@ class AIDemo {
         println("✅ Created characters: ${assistant.name} (Assistant), ${creative.name} (Creative)")
     }
     
-    private fun demoCharacterConversations() {
+    private fun demoCharacterConversations() = runBlocking {
         println("\n🎭 DEMO 1: Character Conversations")
         println("-".repeat(40))
         

@@ -9,6 +9,12 @@ import org.ninelym.cognitive.CognitiveTensor
 import org.ninelym.quantum.QuantumNeuralProcessor
 import org.ninelym.optimization.MemoryOptimizer
 import org.ninelym.optimization.PerformanceMonitor
+import org.ninelym.llm.ChatMessage
+import org.ninelym.llm.LanguageModel
+import org.ninelym.llm.LanguageModels
+import org.ninelym.llm.OpenAICompatibleModel
+import org.ninelym.llm.PersonaPrompt
+import java.io.File
 
 /**
  * Multimodal AI Orchestrator
@@ -23,7 +29,8 @@ import org.ninelym.optimization.PerformanceMonitor
 class MultimodalOrchestrator(
     private val memoryOptimizer: MemoryOptimizer,
     private val performanceMonitor: PerformanceMonitor,
-    private val quantumProcessor: QuantumNeuralProcessor
+    private val quantumProcessor: QuantumNeuralProcessor,
+    private val modelProvider: () -> Result<LanguageModel> = { LanguageModels.current() }
 ) {
     private val TAG = "MultimodalOrchestrator"
     
@@ -32,6 +39,12 @@ class MultimodalOrchestrator(
     
     private val orchestrationScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     
+    private val persona = PersonaPrompt(
+        name = "Togai",
+        description = "an on-device AI assistant that helps the user with everyday tasks, " +
+            "answering clearly, warmly and concisely."
+    )
+
     // Modality engines
     private var languageModelLoaded = false
     private var imageGeneratorLoaded = false
@@ -108,16 +121,17 @@ class MultimodalOrchestrator(
      */
     private suspend fun loadLanguageModel() {
         performanceMonitor.measureOperation("load_language_model") {
-            // Optimize memory for model loading
-            val modelSizeMB = 1500L
-            if (memoryOptimizer.optimizeForModelLoading(modelSizeMB)) {
-                // Native library loading handled by NativeLibraryLoader
-                languageModelLoaded = true
-                Log.i(TAG, "✓ Language model loaded")
-            } else {
-                Log.w(TAG, "✗ Insufficient memory for language model")
-            }
+            languageModelLoaded = endpointServing()
+            if (languageModelLoaded) Log.i(TAG, "✓ Language model serving")
+            else Log.w(TAG, "✗ No language model serving at the configured endpoint")
         }
+    }
+
+    /** True when the configured model server answers and lists the configured model. */
+    private suspend fun endpointServing(): Boolean {
+        val model = modelProvider().getOrElse { return false }
+        val endpoint = model as? OpenAICompatibleModel ?: return true
+        return endpoint.listModels().map { served -> served.isEmpty() || model.modelId in served }.getOrDefault(false)
     }
     
     /**
@@ -125,13 +139,9 @@ class MultimodalOrchestrator(
      */
     private suspend fun loadImageGenerator() {
         performanceMonitor.measureOperation("load_image_generator") {
-            val modelSizeMB = 2000L
-            if (memoryOptimizer.optimizeForModelLoading(modelSizeMB)) {
-                imageGeneratorLoaded = true
-                Log.i(TAG, "✓ Image generator loaded")
-            } else {
-                Log.w(TAG, "✗ Insufficient memory for image generator")
-            }
+            // Served by the same endpoint's /images/generations; failures surface per request
+            imageGeneratorLoaded = endpointServing()
+            Log.i(TAG, if (imageGeneratorLoaded) "✓ Image endpoint reachable" else "✗ Image endpoint unavailable")
         }
     }
     
@@ -140,13 +150,9 @@ class MultimodalOrchestrator(
      */
     private suspend fun loadSpeechProcessor() {
         performanceMonitor.measureOperation("load_speech_processor") {
-            val modelSizeMB = 500L
-            if (memoryOptimizer.optimizeForModelLoading(modelSizeMB)) {
-                speechProcessorLoaded = true
-                Log.i(TAG, "✓ Speech processor loaded")
-            } else {
-                Log.w(TAG, "✗ Insufficient memory for speech processor")
-            }
+            // Served by the same endpoint's /audio/transcriptions; failures surface per request
+            speechProcessorLoaded = endpointServing()
+            Log.i(TAG, if (speechProcessorLoaded) "✓ Speech endpoint reachable" else "✗ Speech endpoint unavailable")
         }
     }
     
@@ -209,52 +215,35 @@ class MultimodalOrchestrator(
      * Process language input
      */
     private suspend fun processLanguage(text: String): LanguageResult {
-        return withContext(Dispatchers.Default) {
-            // Simulate language model inference
-            // In production, this would call native LLaMA inference
-            delay(100) // Simulate processing time
-            
-            LanguageResult(
-                response = "Processed: $text",
-                tokens = text.split(" ").size,
-                confidence = 0.95f
-            )
-        }
+        val model = modelProvider().getOrThrow()
+        val reply = persona.respond(model, listOf(ChatMessage.user(text))).getOrThrow()
+        return LanguageResult(response = reply, model = model.modelId)
     }
     
     /**
      * Generate image from prompt
      */
     private suspend fun generateImage(prompt: String): ImageResult {
-        return withContext(Dispatchers.Default) {
-            // Simulate Stable Diffusion generation
-            // In production, this would call native SD inference
-            delay(2000) // Simulate generation time
-            
-            ImageResult(
-                imagePath = "/generated/image_${System.currentTimeMillis()}.png",
-                width = 512,
-                height = 512,
-                steps = 20,
-                seed = System.currentTimeMillis()
-            )
+        val endpoint = LanguageModels.currentEndpoint().getOrThrow()
+        val bytes = endpoint.generateImage(prompt, size = "512x512").getOrThrow()
+        val file = withContext(Dispatchers.IO) {
+            File(System.getProperty("java.io.tmpdir"), "togai_image_${System.currentTimeMillis()}.png").apply { writeBytes(bytes) }
         }
+        return ImageResult(imagePath = file.absolutePath, width = 512, height = 512)
     }
     
     /**
      * Process speech input
      */
     private suspend fun processSpeech(audioData: ByteArray): SpeechResult {
-        return withContext(Dispatchers.Default) {
-            // Simulate Kaldi speech recognition
-            // In production, this would call native Kaldi inference
-            delay(500) // Simulate processing time
-            
-            SpeechResult(
-                transcription = "Transcribed speech",
-                confidence = 0.92f,
-                language = "en-US"
-            )
+        val endpoint = LanguageModels.currentEndpoint().getOrThrow()
+        val audio = withContext(Dispatchers.IO) {
+            File.createTempFile("togai_audio_", ".wav").apply { writeBytes(audioData); deleteOnExit() }
+        }
+        try {
+            return SpeechResult(transcription = endpoint.transcribe(audio).getOrThrow())
+        } finally {
+            audio.delete()
         }
     }
     
@@ -284,20 +273,11 @@ class MultimodalOrchestrator(
         val confidences = mutableMapOf<Modality, Float>()
         
         results.forEach { (modality, result) ->
-            val confidence = when (result) {
-                is LanguageResult -> result.confidence
-                is SpeechResult -> result.confidence
-                is QuantumResult -> result.coherence
-                else -> 0.5f
-            }
-            confidences[modality] = confidence
+            // Only modalities that actually measure a confidence contribute
+            if (result is QuantumResult) confidences[modality] = result.coherence
         }
         
-        val overallConfidence = if (confidences.isNotEmpty()) {
-            confidences.values.average().toFloat()
-        } else {
-            0f
-        }
+        val overallConfidence = if (confidences.isNotEmpty()) confidences.values.average().toFloat() else null
         
         return FusedResult(
             modalityConfidences = confidences,
@@ -402,8 +382,7 @@ data class MultimodalResponse(
  */
 data class LanguageResult(
     val response: String,
-    val tokens: Int,
-    val confidence: Float
+    val model: String
 )
 
 /**
@@ -412,18 +391,14 @@ data class LanguageResult(
 data class ImageResult(
     val imagePath: String,
     val width: Int,
-    val height: Int,
-    val steps: Int,
-    val seed: Long
+    val height: Int
 )
 
 /**
  * Speech processing result
  */
 data class SpeechResult(
-    val transcription: String,
-    val confidence: Float,
-    val language: String
+    val transcription: String
 )
 
 /**
@@ -441,7 +416,8 @@ data class QuantumResult(
  */
 data class FusedResult(
     val modalityConfidences: Map<Modality, Float>,
-    val overallConfidence: Float,
+    /** Null when no modality reported a measured confidence. */
+    val overallConfidence: Float?,
     val fusionStrategy: String
 )
 

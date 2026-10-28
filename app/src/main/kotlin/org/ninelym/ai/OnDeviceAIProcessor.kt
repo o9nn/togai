@@ -3,7 +3,8 @@ package org.ninelym.ai
 import org.ninelym.cognitive.CognitiveTensor
 import org.ninelym.cognitive.hypergraph.Atom
 import org.ninelym.cognitive.hypergraph.AtomType
-import java.io.File
+import org.ninelym.llm.LanguageModel
+import org.ninelym.llm.LanguageModels
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -12,7 +13,9 @@ import java.util.concurrent.ConcurrentHashMap
  * Provides local AI processing capabilities without internet connectivity,
  * maintaining privacy and security while offering personalized AI experiences.
  */
-class OnDeviceAIProcessor {
+class OnDeviceAIProcessor(
+    private val modelProvider: () -> Result<LanguageModel> = { LanguageModels.current() }
+) {
     
     private val modelCache = ConcurrentHashMap<String, AIModel>()
     private val characterSystem = CharacterSystem()
@@ -24,17 +27,16 @@ class OnDeviceAIProcessor {
      */
     fun initialize(modelPath: String): Boolean {
         return try {
-            // Load base language model (simulated - in real implementation would load actual model)
-            val baseModel = AIModel(
-                id = "layla-base-7b",
-                name = "Layla Base Model",
+            // The language model is whatever LanguageModels serves; size details are unknown here
+            val configured = modelProvider().getOrNull()
+            modelCache["base"] = AIModel(
+                id = configured?.modelId ?: "unconfigured",
+                name = configured?.modelId ?: "No language model configured",
                 type = ModelType.LANGUAGE_MODEL,
-                parameters = 7_000_000_000L,
-                fileSizeBytes = 4L * 1024 * 1024 * 1024, // 4GB
-                isLoaded = true
+                parameters = null,
+                fileSizeBytes = null,
+                isLoaded = configured != null
             )
-            
-            modelCache["base"] = baseModel
             
             // Initialize character system with default personalities
             characterSystem.initializeDefaultCharacters()
@@ -51,7 +53,7 @@ class OnDeviceAIProcessor {
     /**
      * Process natural language input and generate response
      */
-    fun processLanguageInput(
+    suspend fun processLanguageInput(
         input: String, 
         character: Character? = null,
         context: ConversationContext = ConversationContext.DEFAULT
@@ -63,7 +65,8 @@ class OnDeviceAIProcessor {
         }
         
         val activeCharacter = character ?: characterSystem.getDefaultCharacter()
-        val model = modelCache["base"] ?: return AIResponse.error("Model not loaded")
+        val model = modelProvider().getOrElse { return AIResponse.error(it.message ?: "No language model configured") }
+        val startTime = System.currentTimeMillis()
         
         // Convert input to cognitive tensor for processing
         val inputTensor = textToCognitiveTensor(input, activeCharacter, context)
@@ -71,8 +74,9 @@ class OnDeviceAIProcessor {
         // Process through cognitive architecture (integrates with existing system)
         val processedTensor = processWithCharacterPersonality(inputTensor, activeCharacter)
         
-        // Generate response based on character and context
-        val responseText = generateResponseText(processedTensor, activeCharacter, context)
+        // Generate the character's reply with the language model
+        val responseText = generateResponseText(model, input, processedTensor, activeCharacter, context)
+            .getOrElse { return AIResponse.error("Language model failed: ${it.message}") }
         
         // Store conversation locally (privacy-first approach)
         privacyManager.storeConversationEntry(input, responseText, activeCharacter.id)
@@ -80,7 +84,7 @@ class OnDeviceAIProcessor {
         return AIResponse.success(
             text = responseText,
             character = activeCharacter,
-            processingTime = System.currentTimeMillis(),
+            processingTime = System.currentTimeMillis() - startTime,
             confidenceScore = processedTensor.salience
         )
     }
@@ -179,27 +183,30 @@ class OnDeviceAIProcessor {
     /**
      * Generate response text from processed tensor
      */
-    private fun generateResponseText(
+    private suspend fun generateResponseText(
+        model: LanguageModel,
+        input: String,
         tensor: CognitiveTensor,
         character: Character,
         context: ConversationContext
-    ): String {
-        
-        // Simulate response generation based on tensor values
-        // In real implementation, this would use the loaded language model
-        
+    ): Result<String> {
+        // The cognitive analysis steers the register of the reply; the model writes it
         val creativity = tensor.depth
         val empathy = tensor.context
-        val confidence = tensor.salience
-        
-        val responseVariations = when {
-            creativity > 0.7f && empathy > 0.6f -> character.creativeEmpathicResponses
-            creativity > 0.7f -> character.creativeResponses
-            empathy > 0.6f -> character.empathicResponses
-            else -> character.standardResponses
+        val register = when {
+            creativity > 0.7f && empathy > 0.6f -> "Be imaginative and emotionally supportive in this reply."
+            creativity > 0.7f -> "Be imaginative and inventive in this reply."
+            empathy > 0.6f -> "Be especially warm and empathetic in this reply."
+            else -> "Answer helpfully and naturally."
         }
-        
-        return responseVariations.random() + " (Processing confidence: ${(confidence * 100).toInt()}%)"
+        val task = buildString {
+            append(register)
+            if (context.topicFocus.isNotBlank()) append(" The conversation is about ${context.topicFocus}.")
+            if (context.emotionalState != EmotionalState.NEUTRAL) {
+                append(" The user seems ${context.emotionalState.name.lowercase()}.")
+            }
+        }
+        return character.toPersonaPrompt().respond(model, input, task)
     }
     
     // Analysis helper methods
@@ -260,8 +267,7 @@ class OnDeviceAIProcessor {
     }
     
     private fun getMemoryUsage(): Long {
-        // Simulate memory usage calculation
-        return modelCache.values.sumOf { it.fileSizeBytes } / (1024 * 1024)
+        return modelCache.values.sumOf { it.fileSizeBytes ?: 0L } / (1024 * 1024)
     }
 }
 
@@ -272,8 +278,9 @@ data class AIModel(
     val id: String,
     val name: String,
     val type: ModelType,
-    val parameters: Long,
-    val fileSizeBytes: Long,
+    /** Null when unknown (e.g. a model served by another process). */
+    val parameters: Long?,
+    val fileSizeBytes: Long?,
     val isLoaded: Boolean,
     val version: String = "1.0.0"
 )

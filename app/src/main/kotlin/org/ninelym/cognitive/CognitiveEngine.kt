@@ -448,7 +448,7 @@ class CognitiveEngine(
     /**
      * Process natural language through cognitive AI pipeline
      */
-    fun processNaturalLanguage(
+    suspend fun processNaturalLanguage(
         input: String,
         character: Character? = null,
         context: ConversationContext = ConversationContext.DEFAULT
