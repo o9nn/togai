@@ -2,6 +2,8 @@ package org.ninelym.togai.sync
 
 import android.content.Context
 import androidx.work.*
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -28,6 +30,7 @@ class OfflineFirstSync private constructor(
         private const val SYNC_INTERVAL_MINUTES = 15L
         private const val PREFS_NAME = "togai_sync_prefs"
         private const val KEY_PENDING_OPERATIONS = "pending_operations"
+        private const val KEY_SERVER_URL = "sync_server_url"
         
         @Volatile
         private var instance: OfflineFirstSync? = null
@@ -156,6 +159,12 @@ class OfflineFirstSync private constructor(
             return@withContext
         }
         
+        if (syncServerUrl() == null) {
+            // Nothing to sync with; keep operations queued rather than discarding them
+            ErrorHandler.logDebug(TAG, "No sync server configured; ${pendingOperations.size} operations stay queued")
+            return@withContext
+        }
+        
         updateSyncState(status = SyncStatus.SYNCING)
         
         try {
@@ -259,16 +268,32 @@ class OfflineFirstSync private constructor(
      * Perform individual sync operation
      */
     private suspend fun performSyncOperation(item: PendingSyncItem) {
-        // TODO: Implement actual sync logic with backend API
-        // This is a placeholder for the actual implementation
-        
+        val base = syncServerUrl() ?: throw IllegalStateException("No sync server configured")
         ErrorHandler.logDebug(TAG, "Performing ${item.operation} for ${item.entityType}")
         
-        // Simulate network delay
-        kotlinx.coroutines.delay(100)
-        
-        // In production, this would call the appropriate API endpoint
-        // based on entityType and operation
+        // REST mapping: CREATE -> POST collection, UPDATE -> PUT item, DELETE -> DELETE item
+        val collection = "${base.trimEnd('/')}/${item.entityType}"
+        val body = item.data.toRequestBody("application/json".toMediaType())
+        val request = when (SyncOperation.valueOf(item.operation)) {
+            SyncOperation.CREATE -> okhttp3.Request.Builder().url(collection).post(body)
+            SyncOperation.UPDATE -> okhttp3.Request.Builder().url("$collection/${item.id}").put(body)
+            SyncOperation.DELETE -> okhttp3.Request.Builder().url("$collection/${item.id}").delete()
+        }.build()
+        withContext(Dispatchers.IO) {
+            http.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) throw IllegalStateException("Sync server returned HTTP ${response.code}")
+            }
+        }
+    }
+    
+    private val http by lazy { okhttp3.OkHttpClient() }
+    
+    /** Sync server base URL, set with [setSyncServerUrl]; null means sync is not configured. */
+    private fun syncServerUrl(): String? =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getString(KEY_SERVER_URL, null)
+    
+    fun setSyncServerUrl(url: String?) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().putString(KEY_SERVER_URL, url).apply()
     }
     
     /**

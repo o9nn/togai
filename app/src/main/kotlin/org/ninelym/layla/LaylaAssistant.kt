@@ -373,7 +373,7 @@ class LaylaAssistant {
         val result = authService.signIn(email, password)
         return if (result.isSuccess) {
             val user = result.getOrThrow()
-            Result.success("Welcome, ${user.name}!")
+            Result.success("Signed in as ${user.email}")
         } else {
             Result.failure(result.exceptionOrNull() ?: Exception("Sign in failed"))
         }
@@ -551,9 +551,13 @@ suspend fun main() {
         println("📋 Phase 2: Authentication Demo")
         println("─".repeat(60))
         println("  Signing in user...")
+        // Local accounts: create one if it doesn't exist yet, then sign in
+        layla.getAuthService().signUp("john.doe@example.com", "password123", "John Doe")
         val signInResult = layla.signIn("john.doe@example.com", "password123")
         if (signInResult.isSuccess) {
             println("  ✅ ${signInResult.getOrThrow()}")
+        } else {
+            println("  ❌ Sign in failed: ${signInResult.exceptionOrNull()?.message}")
         }
         println()
         

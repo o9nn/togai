@@ -17,7 +17,10 @@ import kotlinx.coroutines.flow.*
  * - Media file access (images, video, audio)
  * - File sharing and export
  */
-class FileAccessService {
+class FileAccessService(
+    /** Used to check permissions and start share intents; pickers need an Activity (see below). */
+    private val context: android.content.Context? = null
+) {
     
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     
@@ -37,15 +40,16 @@ class FileAccessService {
      */
     suspend fun requestPermission(permission: Permission): PermissionResult {
         return withContext(Dispatchers.Main) {
-            // Stub: In actual implementation, would call Android permission APIs
-            // ActivityCompat.requestPermissions(activity, arrayOf(permission.androidPermission), requestCode)
-            
-            // Simulate permission grant
-            _permissionState.value = _permissionState.value + (permission to PermissionStatus.GRANTED)
+            // Reports the real grant state; prompting the user requires an Activity's permission launcher
+            val ctx = context ?: throw IllegalStateException("Checking permissions needs an Android Context")
+            val granted = androidx.core.content.ContextCompat.checkSelfPermission(ctx, permission.androidPermission) ==
+                android.content.pm.PackageManager.PERMISSION_GRANTED
+            _permissionState.value = _permissionState.value +
+                (permission to if (granted) PermissionStatus.GRANTED else PermissionStatus.DENIED)
             
             PermissionResult(
                 permission = permission,
-                granted = true,
+                granted = granted,
                 shouldShowRationale = false
             )
         }
@@ -67,16 +71,11 @@ class FileAccessService {
                     )
                 }
                 
-                // Stub: In actual implementation, would launch file picker intent
-                // val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
-                //     type = mimeTypes.firstOrNull() ?: "*/*"
-                //     if (allowMultiple) putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
-                //     if (mimeTypes.size > 1) putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes.toTypedArray())
-                // }
-                // startActivityForResult(intent, PICK_FILE_REQUEST)
-                
-                // Return empty list as stub
-                Result.success(emptyList())
+                // The system picker returns its result to an Activity (ActivityResultContracts.OpenDocument);
+                // this service can't receive it, so it doesn't pretend the user picked nothing
+                Result.failure(UnsupportedOperationException(
+                    "File picking must be launched from an Activity with ActivityResultContracts.OpenDocument"
+                ))
             } catch (e: Exception) {
                 Result.failure(e)
             }
@@ -96,11 +95,9 @@ class FileAccessService {
                     )
                 }
                 
-                // Stub: In actual implementation, would launch directory picker intent
-                // val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
-                // startActivityForResult(intent, PICK_DIRECTORY_REQUEST)
-                
-                Result.failure(NotImplementedError("Directory picker not implemented in stub"))
+                Result.failure(UnsupportedOperationException(
+                    "Directory picking must be launched from an Activity with ActivityResultContracts.OpenDocumentTree"
+                ))
             } catch (e: Exception) {
                 Result.failure(e)
             }
@@ -277,16 +274,18 @@ class FileAccessService {
     suspend fun shareFile(path: String): Result<Unit> {
         return withContext(Dispatchers.Main) {
             try {
-                // Stub: In actual implementation, would create share intent
-                // val file = File(path)
-                // val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-                // val intent = Intent(Intent.ACTION_SEND).apply {
-                //     type = getMimeType(file)
-                //     putExtra(Intent.EXTRA_STREAM, uri)
-                //     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                // }
-                // startActivity(Intent.createChooser(intent, "Share file"))
-                
+                val ctx = context ?: throw IllegalStateException("Sharing needs an Android Context")
+                val file = File(path)
+                if (!file.exists()) throw IllegalArgumentException("File not found: $path")
+                val uri = androidx.core.content.FileProvider.getUriForFile(ctx, "${ctx.packageName}.fileprovider", file)
+                val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                    type = java.net.URLConnection.guessContentTypeFromName(file.name) ?: "application/octet-stream"
+                    putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                ctx.startActivity(
+                    android.content.Intent.createChooser(intent, "Share file").addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                )
                 Result.success(Unit)
             } catch (e: Exception) {
                 Result.failure(e)
