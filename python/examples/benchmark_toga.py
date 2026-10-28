@@ -23,6 +23,10 @@ from helpers.toga_personality import (
 )
 
 
+# Operations that call the language model are slow by nature; keep their sample small
+MODEL_ITERATIONS = int(os.environ.get("TOGA_BENCH_MODEL_ITERATIONS", "5"))
+
+
 def benchmark_function(func, iterations=1000, warmup=100):
     """
     Benchmark a function with multiple iterations.
@@ -100,13 +104,13 @@ def benchmark_input_framing():
 
     # Normal message
     results = benchmark_function(
-        lambda: toga.frame_input("Normal message without triggers"), iterations=10000
+        lambda: toga.frame_input("Normal message without triggers"), iterations=MODEL_ITERATIONS, warmup=1
     )
     print_benchmark_results("Normal Message Framing", results)
 
     # Cute trigger message
     results = benchmark_function(
-        lambda: toga.frame_input("This is so cute and adorable!"), iterations=10000
+        lambda: toga.frame_input("This is so cute and adorable!"), iterations=MODEL_ITERATIONS, warmup=1
     )
     print_benchmark_results("Cute Trigger Message Framing", results)
 
@@ -143,7 +147,7 @@ def benchmark_commentary():
 
     for context in contexts:
         results = benchmark_function(
-            lambda: toga.add_commentary("Test content", context=context), iterations=10000
+            lambda: toga.add_commentary("Test content", context=context), iterations=MODEL_ITERATIONS, warmup=1
         )
         print_benchmark_results(f"Commentary ({context})", results)
 
@@ -158,14 +162,14 @@ def benchmark_full_interaction():
 
     # Normal interaction
     results = benchmark_function(
-        lambda: toga.process_interaction("Hello, how are you?"), iterations=5000
+        lambda: toga.process_interaction("Hello, how are you?"), iterations=MODEL_ITERATIONS, warmup=1
     )
     print_benchmark_results("Full Interaction (Normal)", results)
 
     # Cute trigger interaction
     toga2 = initialize_toga_personality()
     results = benchmark_function(
-        lambda: toga2.process_interaction("This is so cute!"), iterations=5000
+        lambda: toga2.process_interaction("This is so cute!"), iterations=MODEL_ITERATIONS, warmup=1
     )
     print_benchmark_results("Full Interaction (Cute Trigger)", results)
 
@@ -178,7 +182,7 @@ def benchmark_serialization():
 
     # Create a toga with some state
     toga = initialize_toga_personality()
-    for i in range(50):
+    for i in range(3):
         toga.process_interaction(f"Message {i}")
 
     # Serialization
@@ -200,28 +204,17 @@ def benchmark_memory_operations():
     # Memory with deque (optimized)
     toga = initialize_toga_personality()
 
-    # Add 100 interactions (fills memory)
+    # Each interaction is a real model call, so this measures generation latency
     start = time.perf_counter()
-    for i in range(100):
+    for i in range(MODEL_ITERATIONS):
         toga.process_interaction(f"Message {i}")
     end = time.perf_counter()
 
-    time_100 = (end - start) * 1000
-    print(f"\n100 Interactions (filling memory):")
-    print(f"  Total time: {time_100:.2f} ms")
-    print(f"  Per interaction: {time_100/100:.4f} ms")
-
-    # Add another 100 (tests deque efficiency)
-    start = time.perf_counter()
-    for i in range(100, 200):
-        toga.process_interaction(f"Message {i}")
-    end = time.perf_counter()
-
-    time_200 = (end - start) * 1000
-    print(f"\nNext 100 Interactions (with full memory):")
-    print(f"  Total time: {time_200:.2f} ms")
-    print(f"  Per interaction: {time_200/100:.4f} ms")
-    print(f"  Memory size: {len(toga.memory)} (max: 100)")
+    total = (end - start) * 1000
+    print(f"\n{MODEL_ITERATIONS} Interactions (model-generated replies):")
+    print(f"  Total time: {total:.2f} ms")
+    print(f"  Per interaction: {total/MODEL_ITERATIONS:.1f} ms")
+    print(f"  Memory size: {len(toga.memory)} (max: {toga.memory.maxlen})")
 
 
 def benchmark_trait_evolution():
@@ -296,12 +289,8 @@ def run_all_benchmarks():
     print("=" * 70)
     print(f"\nTotal benchmark time: {total_time:.2f} seconds")
     print("\n✓ All benchmarks completed successfully!")
-    print("\nKey Findings:")
-    print("  - Initialization is fast (< 1ms)")
-    print("  - Input framing is efficient (< 1ms)")
-    print("  - Full interactions are performant (< 2ms)")
-    print("  - Memory management with deque is optimized")
-    print("  - Serialization is fast enough for production use")
+    print("\nNote: framing, commentary and interactions call the configured language model,")
+    print("so their timings above reflect that model's generation latency on this machine.")
 
 
 if __name__ == "__main__":

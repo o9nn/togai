@@ -305,27 +305,23 @@ def run_interactive_demo():
                 continue
 
             if user_input.lower() in ["quit", "exit", "q"]:
-                print("\nEhehe~ Bye bye! ♡")
+                print(f"\nToga: {toga.process_interaction('(The user is saying goodbye and leaving now.)')}")
                 break
 
             if user_input.lower() == "/mood":
-                print(f"Toga: I'm {toga.get_current_mood()}! ♡")
+                print(f"[mood] {toga.get_current_mood()}")
                 continue
 
             if user_input.lower() == "/obsessions":
                 if toga.obsession_targets:
-                    print(
-                        f"Toga: My current obsessions are: {', '.join(toga.obsession_targets)} ♡♡♡"
-                    )
+                    print(f"[obsessions] {', '.join(toga.obsession_targets)}")
                 else:
-                    print("Toga: I haven't found anything cute yet! Ehehe~")
+                    print("[obsessions] none yet")
                 continue
 
             if user_input.lower() == "/state":
                 state = toga.emotional_state
-                print(
-                    f"Toga: State={state.state}, Intensity={state.intensity:.2f}, Duration={state.duration:.2f}"
-                )
+                print(f"[state] {state.state}, intensity={state.intensity:.2f}, duration={state.duration:.2f}")
                 continue
 
             # Process interaction
