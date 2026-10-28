@@ -334,6 +334,12 @@ class LaylaAssistant {
     }
     
     /**
+     * Ask Layla directly and get the model's reply text
+     */
+    suspend fun reply(message: String): Result<String> =
+        inferenceService.infer(message).map { it.text }
+    
+    /**
      * Remember text (text processing feature)
      */
     suspend fun rememberText(text: String, source: String? = null): Result<String> {
@@ -651,12 +657,18 @@ suspend fun main() {
             delay(1000)
             val transcript = voiceInput.stopRecording(recordSession.getOrThrow())
             if (transcript.isSuccess) {
-                println("  ✅ Transcribed: \"${transcript.getOrThrow().text}\"")
+                val heard = transcript.getOrThrow().text
+                println("  ✅ Transcribed: \"$heard\"")
                 
-                // Test TTS
-                println("  Speaking response...")
-                voiceOutput.speak("Hello! I understood your voice input perfectly.")
-                println("  ✅ Voice output completed")
+                // Speak Layla's model-generated reply to what was heard
+                layla.reply(heard).onSuccess { answer ->
+                    println("  Speaking response: $answer")
+                    voiceOutput.speak(answer)
+                        .onSuccess { println("  ✅ Voice output completed") }
+                        .onFailure { println("  ❌ Voice output failed: ${it.message}") }
+                }.onFailure { println("  ❌ Model reply failed: ${it.message}") }
+            } else {
+                println("  ❌ Transcription failed: ${transcript.exceptionOrNull()?.message}")
             }
         }
         println()
@@ -671,9 +683,12 @@ suspend fun main() {
         characterService.setActiveCharacter("creative")
         println("  ✅ Active character: Aria (Creative Companion)")
         
-        println("  Setting character expression...")
-        characterService.setExpression("creative", org.ninelym.layla.character.Expression.HAPPY)
-        println("  ✅ Expression set to HAPPY")
+        println("  Syncing expression with a model-generated line...")
+        layla.reply("Say one excited sentence about painting.").onSuccess { line ->
+            characterService.syncWithSpeech("creative", line)
+                .onSuccess { println("  ✅ \"$line\" -> expression chosen by the model") }
+                .onFailure { println("  ❌ Expression sync failed: ${it.message}") }
+        }.onFailure { println("  ❌ Model reply failed: ${it.message}") }
         
         println("  Available characters:")
         characterService.getAvailableCharacters().forEach { char ->
