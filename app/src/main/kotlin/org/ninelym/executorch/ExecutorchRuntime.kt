@@ -4,6 +4,10 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import java.util.concurrent.atomic.AtomicBoolean
+import org.ninelym.llm.ChatMessage
+import org.ninelym.llm.GenerationOptions
+import org.ninelym.llm.LanguageModel
+import org.ninelym.llm.LanguageModels
 
 /**
  * Executorch Runtime
@@ -67,14 +71,21 @@ interface LlamaCallback {
 }
 
 /**
- * Executorch Llama Module wrapper
+ * Executorch Llama Module wrapper.
+ *
+ * Runs the .pte model through the Executorch JNI runtime when that library is packaged. Without
+ * it, the module generates with the app's configured [LanguageModel] (a locally served or remote
+ * model) rather than producing any canned output.
  */
 class LlamaModule(
     private val modelPath: String,
     private val tokenizerPath: String,
-    private val temperature: Float = 0.8f
+    private val temperature: Float = 0.8f,
+    private val modelProvider: () -> Result<LanguageModel> = { LanguageModels.current() }
 ) {
     private var nativeHandle: Long = 0
+    private var servedModel: LanguageModel? = null
+    private val stopRequested = AtomicBoolean(false)
     private val isLoaded = AtomicBoolean(false)
 
     /**
@@ -92,7 +103,7 @@ class LlamaModule(
                     -1
                 }
             } else {
-                // Simulated load for testing
+                servedModel = modelProvider().getOrNull() ?: return -2
                 isLoaded.set(true)
                 0
             }
@@ -108,7 +119,7 @@ class LlamaModule(
      * @param callback Progress callback
      * @return Generated text
      */
-    fun generate(prompt: String, seqLen: Int, callback: LlamaCallback): String {
+    fun generate(prompt: String, seqLen: Int, callback: LlamaCallback, systemPrompt: String = ""): String {
         if (!isLoaded.get()) {
             callback.onError("Model not loaded")
             return ""
@@ -116,7 +127,12 @@ class LlamaModule(
 
         return try {
             if (ExecutorchJni.isLibraryLoaded() && nativeHandle != 0L) {
-                ExecutorchJni.llama_generate(nativeHandle, prompt, seqLen, object : ExecutorchJni.NativeCallback {
+                val fullPrompt = if (systemPrompt.isNotEmpty()) {
+                    "$systemPrompt\n\nUser: $prompt\nAssistant:"
+                } else {
+                    "User: $prompt\nAssistant:"
+                }
+                ExecutorchJni.llama_generate(nativeHandle, fullPrompt, seqLen, object : ExecutorchJni.NativeCallback {
                     override fun onToken(token: String) = callback.onToken(token)
                     override fun onComplete() {
                         callback.onComplete(GenerationStats(
@@ -129,19 +145,7 @@ class LlamaModule(
                     override fun onError(message: String) = callback.onError(message)
                 })
             } else {
-                // Simulated generation
-                val response = "This is a simulated Executorch response for: $prompt"
-                response.forEach { char ->
-                    callback.onToken(char.toString())
-                    Thread.sleep(20)
-                }
-                callback.onComplete(GenerationStats(
-                    promptTokens = prompt.split(" ").size,
-                    generatedTokens = response.length,
-                    totalTimeMs = response.length * 20L,
-                    tokensPerSecond = 50f
-                ))
-                response
+                generateWithServedModel(prompt, seqLen, systemPrompt, callback)
             }
         } catch (e: Exception) {
             callback.onError(e.message ?: "Unknown error")
@@ -149,10 +153,52 @@ class LlamaModule(
         }
     }
 
+    private fun generateWithServedModel(
+        prompt: String,
+        seqLen: Int,
+        systemPrompt: String,
+        callback: LlamaCallback
+    ): String {
+        val model = servedModel ?: run { callback.onError("Model not loaded"); return "" }
+        stopRequested.set(false)
+        val start = System.currentTimeMillis()
+        var chunks = 0
+        val messages = buildList {
+            if (systemPrompt.isNotEmpty()) add(ChatMessage.system(systemPrompt))
+            add(ChatMessage.user(prompt))
+        }
+        val result = runBlocking {
+            val job = async {
+                model.chat(messages, GenerationOptions(temperature = temperature, maxTokens = seqLen)) {
+                    chunks++
+                    callback.onToken(it)
+                }
+            }
+            val watcher = launch { while (!stopRequested.get()) delay(50); job.cancel() }
+            try { job.await() } catch (e: CancellationException) {
+                Result.failure(Exception("Generation stopped"))
+            } finally { watcher.cancel() }
+        }
+        return result.fold(
+            onSuccess = { text ->
+                val elapsed = System.currentTimeMillis() - start
+                callback.onComplete(GenerationStats(
+                    promptTokens = prompt.split(" ").size,
+                    generatedTokens = chunks,
+                    totalTimeMs = elapsed,
+                    tokensPerSecond = if (elapsed > 0) chunks * 1000f / elapsed else 0f
+                ))
+                text
+            },
+            onFailure = { callback.onError(it.message ?: "Generation failed"); "" }
+        )
+    }
+
     /**
      * Stop current generation
      */
     fun stop() {
+        stopRequested.set(true)
         if (ExecutorchJni.isLibraryLoaded() && nativeHandle != 0L) {
             ExecutorchJni.llama_stop(nativeHandle)
         }
@@ -166,6 +212,7 @@ class LlamaModule(
             ExecutorchJni.llama_unload(nativeHandle)
             nativeHandle = 0
         }
+        servedModel = null
         isLoaded.set(false)
     }
 
@@ -222,7 +269,9 @@ object ExecutorchJni {
 /**
  * Executorch Runtime - high-level API
  */
-class ExecutorchRuntime {
+class ExecutorchRuntime(
+    private val modelProvider: () -> Result<LanguageModel> = { LanguageModels.current() }
+) {
 
     private val _state = MutableStateFlow(ExecutorchState.UNINITIALIZED)
     val state: StateFlow<ExecutorchState> = _state
@@ -255,10 +304,16 @@ class ExecutorchRuntime {
             val module = LlamaModule(
                 config.modelPath,
                 config.tokenizerPath,
-                config.temperature
+                config.temperature,
+                modelProvider
             )
 
             val loadResult = module.load()
+            if (loadResult == -2) {
+                _state.value = ExecutorchState.ERROR
+                return@withContext Result.failure(Exception(
+                    "Executorch runtime isn't packaged and no language model is configured"))
+            }
             if (loadResult != 0) {
                 _state.value = ExecutorchState.ERROR
                 return@withContext Result.failure(Exception("Model load failed with code: $loadResult"))
@@ -313,8 +368,7 @@ class ExecutorchRuntime {
                 }
             }
 
-            val fullPrompt = buildPrompt(prompt)
-            module.generate(fullPrompt, maxTokens, callback)
+            module.generate(prompt, maxTokens, callback, currentConfig?.systemPrompt ?: "")
 
             _state.value = ExecutorchState.READY
 
@@ -328,15 +382,6 @@ class ExecutorchRuntime {
             Result.failure(e)
         } finally {
             isGenerating.set(false)
-        }
-    }
-
-    private fun buildPrompt(userPrompt: String): String {
-        val systemPrompt = currentConfig?.systemPrompt ?: ""
-        return if (systemPrompt.isNotEmpty()) {
-            "$systemPrompt\n\nUser: $userPrompt\nAssistant:"
-        } else {
-            "User: $userPrompt\nAssistant:"
         }
     }
 
