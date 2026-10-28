@@ -409,7 +409,9 @@ class EmotionalIntelligenceEngine:
         return compatibility.get((user_emotion, toga_emotion), 0.5)
 
 
-def create_emotional_intelligence_engine(model: Optional[LanguageModel] = None) -> EmotionalIntelligenceEngine:
+def create_emotional_intelligence_engine(
+    model: Optional[LanguageModel] = None,
+) -> EmotionalIntelligenceEngine:
     """
     Factory function to create emotional intelligence engine.
 

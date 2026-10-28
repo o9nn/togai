@@ -116,7 +116,7 @@ class LanguageModel:
             line = raw.decode("utf-8").strip()
             if not line.startswith("data:"):
                 continue
-            payload = line[len("data:"):].strip()
+            payload = line[len("data:") :].strip()
             if payload == "[DONE]":
                 break
             if not payload:
@@ -132,7 +132,9 @@ class LanguageModel:
 
     def ask(self, system: str, user: str, **kwargs) -> str:
         """Single-turn helper: system instruction plus one user message."""
-        return self.chat([{"role": "system", "content": system}, {"role": "user", "content": user}], **kwargs)
+        return self.chat(
+            [{"role": "system", "content": system}, {"role": "user", "content": user}], **kwargs
+        )
 
 
 _configured: Optional[LanguageModel] = None

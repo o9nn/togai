@@ -339,12 +339,20 @@ class TogaPersonality:
             f"Current task: {task}"
         )
 
-    def _say(self, task: str, user: str, history: Optional[List[Dict[str, str]]] = None, max_tokens: int = 200) -> str:
+    def _say(
+        self,
+        task: str,
+        user: str,
+        history: Optional[List[Dict[str, str]]] = None,
+        max_tokens: int = 200,
+    ) -> str:
         messages = [{"role": "system", "content": self.system_prompt(task)}]
         messages += history or []
         messages.append({"role": "user", "content": user})
         temperature = 0.5 + 0.6 * self.personality.chaos
-        return self.model.chat(messages, temperature=min(temperature, 1.2), max_tokens=max_tokens).strip()
+        return self.model.chat(
+            messages, temperature=min(temperature, 1.2), max_tokens=max_tokens
+        ).strip()
 
     def _detect_cute(self, message: str) -> bool:
         message_lower = message.lower()
@@ -391,7 +399,9 @@ class TogaPersonality:
         situation = situations.get(context, f"React to the content below (context: {context}).")
         if self.emotional_state.state == "obsessed" and context != "cute_detected":
             situation += " You're still fixated on something cute."
-        commentary = self._say(situation + " Write one short line of commentary only.", content, max_tokens=80)
+        commentary = self._say(
+            situation + " Write one short line of commentary only.", content, max_tokens=80
+        )
         return f"{commentary}\n\n{content}"
 
     def update_emotional_state(
@@ -472,7 +482,9 @@ class TogaPersonality:
                 history.append({"role": "user", "content": entry["input"]})
                 history.append({"role": "assistant", "content": entry["response"]})
 
-        response = self._say("Reply to the user's latest message.", message, history, max_tokens=300)
+        response = self._say(
+            "Reply to the user's latest message.", message, history, max_tokens=300
+        )
 
         # Decay emotional state over time
         self.emotional_state.decay(rate=0.05)
@@ -501,7 +513,9 @@ class TogaPersonality:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any], model: Optional[LanguageModel] = None) -> "TogaPersonality":
+    def from_dict(
+        cls, data: Dict[str, Any], model: Optional[LanguageModel] = None
+    ) -> "TogaPersonality":
         """Restore personality from dictionary."""
         personality_tensor = TogaPersonalityTensor.from_dict(data["personality"])
         instance = cls(personality=personality_tensor, model=model)

@@ -126,12 +126,24 @@ class LaylaTogaIntegration:
         return response_data
 
     ANIMATION_STATES = [
-        "idle_happy", "excited_sparkle", "bounce_playful", "sad_thoughtful",
-        "spin_chaotic", "jump_excited", "pout_arms_crossed", "idle_neutral",
+        "idle_happy",
+        "excited_sparkle",
+        "bounce_playful",
+        "sad_thoughtful",
+        "spin_chaotic",
+        "jump_excited",
+        "pout_arms_crossed",
+        "idle_neutral",
     ]
     EXPRESSIONS = [
-        "smile_closed_eyes", "sparkle_eyes_blush", "mischievous_grin", "sad_downcast",
-        "wide_grin_crazy", "open_mouth_excited", "pout_cheeks_puffed", "neutral",
+        "smile_closed_eyes",
+        "sparkle_eyes_blush",
+        "mischievous_grin",
+        "sad_downcast",
+        "wide_grin_crazy",
+        "open_mouth_excited",
+        "pout_cheeks_puffed",
+        "neutral",
     ]
 
     def _choose_avatar_reaction(self, reply: str) -> tuple:
@@ -147,7 +159,9 @@ class LaylaTogaIntegration:
             'Respond with a JSON object: {"animation": "<one animation>", "expression": "<one expression>"}.'
         )
         for _ in range(3):
-            raw = self.toga.model.ask(system, f"Toga says: {reply}", temperature=0.2, json_mode=True)
+            raw = self.toga.model.ask(
+                system, f"Toga says: {reply}", temperature=0.2, json_mode=True
+            )
             animation = next((a for a in self.ANIMATION_STATES if a in raw), None)
             expression = next((e for e in self.EXPRESSIONS if e in raw), None)
             if animation and expression:
