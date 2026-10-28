@@ -91,7 +91,7 @@ class LaylaAssistant {
     // Phase 3 Integration services
     private val documentService = DocumentProcessingService()
     private val billingService = BillingService()
-    private val sharingService = SharingService()
+    private val sharingService = SharingService(conversations = { chatService.getConversation(it) })
     private val advancedWorkflowService = AdvancedTaskerWorkflowService(
         notifier = { message -> notificationService.showSimpleNotification("Layla workflow", message, "task_completion") }
     )

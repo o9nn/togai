@@ -251,10 +251,20 @@ class MultimodalOrchestrator(
      * Process with quantum neural network
      */
     private suspend fun processQuantum(request: MultimodalRequest): QuantumResult {
-        // Create cognitive tensor from request
-        val tensor = CognitiveTensor.fromArray(
-            FloatArray(CognitiveTensor.TENSOR_DIMENSIONS) { Math.random().toFloat() }
-        )
+        // Cognitive tensor from the model's embedding of the request text
+        val text = request.textInput ?: request.imagePrompt
+            ?: throw IllegalArgumentException("Quantum processing needs text to embed")
+        val embedding = LanguageModels.currentEndpoint().getOrThrow().embed(listOf(text)).getOrThrow().first()
+        val dims = CognitiveTensor.TENSOR_DIMENSIONS
+        val folded = FloatArray(dims) { i ->
+            // Average the embedding's components into `dims` buckets
+            val from = i * embedding.size / dims
+            val to = maxOf(from + 1, (i + 1) * embedding.size / dims)
+            (from until minOf(to, embedding.size)).map { embedding[it] }.average().toFloat()
+        }
+        val lo = folded.minOrNull() ?: 0f
+        val span = ((folded.maxOrNull() ?: 1f) - lo).takeIf { it > 0f } ?: 1f
+        val tensor = CognitiveTensor.fromArray(FloatArray(dims) { (folded[it] - lo) / span })
         
         val quantumResult = quantumProcessor.processQuantum(tensor)
         
