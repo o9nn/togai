@@ -276,7 +276,7 @@ class AdaptiveMemorySystem {
         
         // Analyze message characteristics
         val wordCount = message.split(" ").size
-        val hasEmoji = message.contains(Regex("[😀-🙏♡♥]"))
+        val hasEmoji = message.codePoints().anyMatch { it in 0x1F300..0x1FAFF || it == 0x2661 || it == 0x2665 }
         val hasTechnicalTerms = message.contains(Regex("\\b(function|class|algorithm|data|API)\\b"))
         
         // Update style (gradual adaptation)
@@ -341,84 +341,53 @@ class AdaptiveMemorySystem {
     }
     
     /**
-     * Get relationship progression message
+     * Relationship milestone reached by the latest interaction, described for the model
      */
-    fun getRelationshipMessage(userId: String): String? {
+    fun relationshipMilestone(userId: String): String? {
         val knowledge = getPersonalKnowledge(userId)
-        val level = knowledge.getRelationshipLevel()
-        
-        return when (level) {
-            RelationshipLevel.FIRST_MEETING -> 
-                if (knowledge.totalInteractions == 1) {
-                    "Ehehe~ Nice to meet you! ♡ I'm excited to get to know you~"
-                } else null
-                
-            RelationshipLevel.FRIENDLY_CONNECTION -> 
-                if (knowledge.totalInteractions == 10) {
-                    "Ooh! We've talked 10 times now~ ♡ I'm starting to really enjoy our conversations!"
-                } else null
-                
-            RelationshipLevel.DEEP_BOND -> 
-                if (knowledge.totalInteractions == 50) {
-                    "*softly* You know... I've really come to care about you~ ♡ Thank you for all our talks~"
-                } else null
-                
-            RelationshipLevel.PRECIOUS_CONNECTION -> 
-                if (knowledge.totalInteractions == 200) {
-                    "*emotional* 200 conversations... You're one of my most precious people~ ♡ I'm so grateful for you~"
-                } else null
+        return when (knowledge.totalInteractions) {
+            1 -> "this is your very first conversation with the user"
+            10 -> "this is your 10th conversation; you're becoming friends"
+            50 -> "this is your 50th conversation; you've come to care about the user deeply"
+            200 -> "this is your 200th conversation; the user is one of your most precious people"
+            else -> null
         }
     }
     
     /**
-     * Generate personalized greeting
+     * The situation a greeting should respond to, described for the model
      */
-    fun generatePersonalizedGreeting(userId: String): String {
+    fun greetingContext(userId: String): String {
         val knowledge = getPersonalKnowledge(userId)
-        val level = knowledge.getRelationshipLevel()
-        
         val daysSince = ChronoUnit.DAYS.between(knowledge.lastInteraction, LocalDateTime.now())
-        
-        return when {
-            daysSince > 7 -> 
-                "*excited* You're back! ♡ I missed you~ It's been ${daysSince} days!"
-            level == RelationshipLevel.PRECIOUS_CONNECTION ->
-                "${knowledge.userName ?: "You"}! ♡ *happy* I'm so glad to see you~"
-            level == RelationshipLevel.DEEP_BOND ->
-                "Ehehe~ ♡ Welcome back! How have you been?"
-            level == RelationshipLevel.FRIENDLY_CONNECTION ->
-                "Hi again! ♡ Good to see you~"
-            else ->
-                "Hello! ♡ Ehehe~"
+        return buildString {
+            append("Relationship: ${knowledge.getRelationshipLevel().displayName}")
+            append(" after ${knowledge.totalInteractions} conversations.")
+            knowledge.userName?.let { append(" The user's name is $it.") }
+            if (daysSince > 7) append(" They've been away for $daysSince days and you missed them.")
+            if (knowledge.interests.isNotEmpty()) append(" Their interests: ${knowledge.interests.take(5).joinToString(", ")}.")
         }
     }
     
     /**
-     * Anticipate user needs based on history
+     * A topic the user keeps returning to, for relationships deep enough to anticipate needs
      */
-    fun anticipateNeeds(userId: String): String? {
+    fun recurringInterest(userId: String): String? {
         val knowledge = getPersonalKnowledge(userId)
         
         if (knowledge.getRelationshipLevel().minInteractions < 50) {
             return null // Only anticipate for deeper relationships
         }
         
-        val recentMemories = episodicMemory
+        return episodicMemory
             .filter { it.userId == userId }
             .sortedByDescending { it.timestamp }
             .take(10)
-        
-        // Look for patterns
-        val commonTags = recentMemories
             .flatMap { it.tags }
             .groupingBy { it }
             .eachCount()
             .maxByOrNull { it.value }
             ?.key
-        
-        return if (commonTags != null) {
-            "I noticed you've been interested in $commonTags lately~ ♡ Want to explore that more?"
-        } else null
     }
     
     /**
@@ -543,22 +512,12 @@ class GrowthTrackingSystem {
     }
     
     /**
-     * Generate growth reflection
+     * How much Toga has grown, described for the model
      */
-    fun generateGrowthReflection(): String {
-        val overall = getOverallGrowth()
-        
-        return when {
-            overall > 0.8f -> 
-                "*softly* I feel like I'm growing so much... thanks to you~ ♡"
-            overall > 0.6f -> 
-                "Ehehe~ I think I'm getting better at understanding things! ♡"
-            overall > 0.4f -> 
-                "I'm learning so much from our conversations~ ♡"
-            else -> 
-                "Every moment with you teaches me something new~ ♡"
-        }
-    }
+    fun growthSummary(): String =
+        "Your growth so far: emotional ${(emotionalGrowth.average() * 100).toInt()}%, " +
+            "creative ${(creativeGrowth.average() * 100).toInt()}%, relational ${(relationalGrowth.average() * 100).toInt()}% " +
+            "(overall ${(getOverallGrowth() * 100).toInt()}%)."
 }
 
 /**

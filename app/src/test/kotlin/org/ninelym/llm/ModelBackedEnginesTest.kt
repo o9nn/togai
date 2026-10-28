@@ -72,3 +72,44 @@ class ModelBackedEnginesTest {
         assertTrue(service.infer("hi").isFailure)
     }
 }
+
+class ModelBackedCharactersTest {
+
+    private val config = ModelEndpointConfig.fromEnvironment()
+
+    private fun provider(): () -> Result<LanguageModel> {
+        assumeTrue("no live model configured", config != null)
+        val model = OpenAICompatibleModel(config!!)
+        return { Result.success(model) }
+    }
+
+    @Test
+    fun `WonderfulToga replies, greets and makes haiku with the model`() = runBlocking {
+        val toga = org.ninelym.ai.wonderful.WonderfulToga("u1", "Sam", org.ninelym.ai.wonderful.TogaVoice(provider()))
+        val reply = toga.processMessage("I finally fixed the bug in my parser!",
+            org.ninelym.ai.wonderful.TaskContext.CELEBRATION).getOrThrow()
+        assertTrue(reply.message.isNotBlank())
+        assertTrue(toga.generateGreeting().getOrThrow().isNotBlank())
+        assertTrue(toga.generateCreativeExpression(org.ninelym.ai.wonderful.CreativeExpressionType.HAIKU).getOrThrow().isNotBlank())
+        assertEquals(1, toga.getRelationshipStatus().totalInteractions)
+    }
+
+    @Test
+    fun `persona driver answers through the model and keeps context`() = runBlocking {
+        val spec = org.ninelym.aid.persona.PersonaFactory.createToga()
+        val driver = org.ninelym.aid.driver.BasePersonaDriver(spec, provider())
+        driver.initialize()
+        val out = driver.process("What's 2 + 2?", org.ninelym.aid.core.AIDTensor.neutral())
+        assertTrue(out is org.ninelym.aid.core.AIDResult.Success)
+        val content = (out as org.ninelym.aid.core.AIDResult.Success).data.content
+        assertTrue(content.isNotBlank())
+        assertTrue("persona must not echo the input", content.trim() != "What's 2 + 2?")
+    }
+
+    @Test
+    fun `persona driver reports an error when the model is unreachable`() = runBlocking {
+        val dead = OpenAICompatibleModel(ModelEndpointConfig("http://127.0.0.1:1/v1", "none", timeoutSeconds = 2))
+        val driver = org.ninelym.aid.driver.BasePersonaDriver(org.ninelym.aid.persona.PersonaFactory.createToga(), { Result.success(dead) })
+        assertTrue(driver.process("hi", org.ninelym.aid.core.AIDTensor.neutral()) is org.ninelym.aid.core.AIDResult.Error)
+    }
+}
