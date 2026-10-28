@@ -11,6 +11,8 @@ import org.ninelym.optimization.MemoryOptimizer
 import org.ninelym.optimization.PerformanceMonitor
 import org.ninelym.quantum.QuantumNeuralProcessor
 import org.ninelym.evolution.MultimodalOrchestrator
+import org.ninelym.llm.LanguageModels
+import org.ninelym.togai.ai.ModelSettings
 
 /**
  * Main Application class for Togai (9mly)
@@ -48,6 +50,9 @@ class TogaiApplication : Application() {
         Log.i(TAG, "Togai Application starting...")
         Log.i(TAG, "Version: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
         
+        // All character/AI text comes from this model endpoint
+        LanguageModels.configure(ModelSettings.load(this))
+
         // Initialize core systems
         initializeCoreSystem()
         
