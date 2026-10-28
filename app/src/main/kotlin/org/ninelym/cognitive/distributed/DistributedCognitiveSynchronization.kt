@@ -397,13 +397,25 @@ class DistributedCognitiveSynchronization(
      * Perform handshake with peer
      */
     private suspend fun performHandshake(connection: PeerConnection): HandshakeResult {
-        // In a real implementation, this would involve network communication
-        // For now, simulate successful handshake
-        return HandshakeResult(
-            success = true,
-            message = "Handshake successful",
-            peerVectorClock = VectorClock(connection.peerId)
-        )
+        // Confirm the peer endpoint is actually reachable before treating it as connected
+        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val uri = java.net.URI(if ("://" in connection.endpoint) connection.endpoint else "tcp://${connection.endpoint}")
+                val port = if (uri.port > 0) uri.port else when (uri.scheme) { "https", "wss" -> 443; else -> 80 }
+                java.net.Socket().use { it.connect(java.net.InetSocketAddress(uri.host, port), 3000) }
+                HandshakeResult(
+                    success = true,
+                    message = "Peer reachable at ${uri.host}:$port",
+                    peerVectorClock = VectorClock(connection.peerId)
+                )
+            } catch (e: Exception) {
+                HandshakeResult(
+                    success = false,
+                    message = "Peer ${connection.endpoint} unreachable: ${e.message}",
+                    peerVectorClock = VectorClock(connection.peerId)
+                )
+            }
+        }
     }
 
     /**

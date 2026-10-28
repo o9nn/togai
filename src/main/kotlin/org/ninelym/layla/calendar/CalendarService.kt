@@ -1,6 +1,17 @@
 package org.ninelym.layla.calendar
 
-import org.ninelym.layla.inference.LaylaInferenceService
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import org.ninelym.llm.LanguageModel
+import org.ninelym.llm.LanguageModels
+import org.ninelym.llm.askJson
+import java.time.LocalDateTime
+import java.time.ZoneId
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -9,9 +20,11 @@ import java.util.concurrent.ConcurrentHashMap
  * 
  * Provides calendar integration with AI-powered event creation and scheduling.
  */
-class CalendarService {
+class CalendarService(
+    private val modelProvider: () -> Result<LanguageModel> = { LanguageModels.current() },
+    private val zone: ZoneId = ZoneId.systemDefault()
+) {
     
-    private val inferenceService = LaylaInferenceService()
     private val events = ConcurrentHashMap<String, CalendarEvent>()
     private val calendars = mutableListOf<CalendarInfo>()
     
@@ -169,8 +182,24 @@ class CalendarService {
         
         val busySlots = getEvents(now, endOfWeek)
         
-        // Find free slots
-        val freeSlots = findFreeSlots(busySlots, now, endOfWeek, duration)
+        // Free slots, honouring time-of-day, avoided days and breaks between meetings
+        val breakMs = preferences.minBreakBetweenMeetings * 60_000L
+        val padded = busySlots.map { it.copy(startTime = it.startTime - breakMs, endTime = it.endTime + breakMs) }
+        val freeSlots = findFreeSlots(padded, now, endOfWeek, duration).filter { slot ->
+            val start = ZonedDateTime.ofInstant(java.time.Instant.ofEpochMilli(slot.startTime), zone)
+            val hourOk = when (preferences.preferredTimeOfDay.lowercase()) {
+                "morning" -> start.hour in 8..11
+                "afternoon" -> start.hour in 12..16
+                "evening" -> start.hour in 17..20
+                else -> start.hour in 8..18
+            }
+            val day = start.dayOfWeek
+            val weekend = day == java.time.DayOfWeek.SATURDAY || day == java.time.DayOfWeek.SUNDAY
+            val dayOk = preferences.avoidDays.none { avoid ->
+                avoid.equals(day.name, ignoreCase = true) || (avoid.equals("weekends", ignoreCase = true) && weekend)
+            }
+            hourOk && dayOk
+        }
         
         return freeSlots.take(5) // Return top 5 suggestions
     }
@@ -183,17 +212,24 @@ class CalendarService {
             ?: return Result.failure(Exception("Event not found"))
         
         return try {
-            // Use AI to generate meeting preparation
+            // The model drafts the preparation from the event details
+            val json = modelProvider().getOrThrow().askJson(
+                "Help the user prepare for a meeting. Respond as JSON: {\"agenda\": string, " +
+                    "\"suggestedTopics\": [string], \"preparationMinutes\": integer}.",
+                buildString {
+                    appendLine("Title: ${event.title}")
+                    event.description?.let { appendLine("Description: $it") }
+                    event.location?.let { appendLine("Location: $it") }
+                    appendLine("Starts: ${format(event.startTime)}, ends: ${format(event.endTime)}")
+                }
+            ).getOrThrow().jsonObject
             val preparation = MeetingPreparation(
                 eventId = eventId,
-                agenda = "Meeting agenda for: ${event.title}",
-                suggestedTopics = listOf(
-                    "Review objectives",
-                    "Discuss progress",
-                    "Action items"
-                ),
+                agenda = json["agenda"]?.jsonPrimitive?.contentOrNull
+                    ?: throw IllegalStateException("Model did not return an agenda"),
+                suggestedTopics = (json["suggestedTopics"] as? JsonArray)?.mapNotNull { it.jsonPrimitive.contentOrNull } ?: emptyList(),
                 relevantDocuments = emptyList(),
-                preparationTime = 15 // minutes
+                preparationTime = json["preparationMinutes"]?.jsonPrimitive?.intOrNull ?: 15
             )
             
             Result.success(preparation)
@@ -203,50 +239,47 @@ class CalendarService {
     }
     
     private fun loadCalendars() {
-        // Simulate loading device calendars
+        // Events created here live in Layla's own on-device calendar
         calendars.add(CalendarInfo(
-            id = "primary",
-            name = "Primary Calendar",
-            accountName = "user@example.com",
+            id = LOCAL_CALENDAR_ID,
+            name = "Layla",
+            accountName = "On this device",
             color = 0xFF1976D2.toInt()
         ))
         
-        calendars.add(CalendarInfo(
-            id = "work",
-            name = "Work Calendar",
-            accountName = "work@example.com",
-            color = 0xFFF57C00.toInt()
-        ))
-        
-        defaultCalendarId = "primary"
+        defaultCalendarId = LOCAL_CALENDAR_ID
     }
     
+    private fun format(epochMillis: Long): String =
+        ZonedDateTime.ofInstant(java.time.Instant.ofEpochMilli(epochMillis), zone).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+    
+    /**
+     * The model parses the natural-language description relative to the current local time.
+     */
     private suspend fun parseEventDetails(description: String): EventDetails {
-        // Use AI to parse natural language
-        // Example: "Meeting with John tomorrow at 2pm for 1 hour"
-        
-        val prompt = """
-            Parse this event description into structured data:
-            "$description"
-            
-            Extract:
-            - Title
-            - Start time
-            - Duration
-            - Location (if any)
-        """.trimIndent()
-        
-        // Simulate AI parsing
-        val now = System.currentTimeMillis()
-        val tomorrow = now + (24 * 60 * 60 * 1000L)
+        val now = ZonedDateTime.now(zone)
+        val json = modelProvider().getOrThrow().askJson(
+            "Extract a calendar event from the user's text. The current local date-time is " +
+                "${now.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)} (${now.dayOfWeek}, zone $zone). " +
+                "Respond as JSON: {\"title\": string, \"start\": \"YYYY-MM-DDTHH:MM\" (local time), " +
+                "\"durationMinutes\": integer, \"location\": string or null, \"reminderMinutes\": integer or null}. " +
+                "If no duration is given use 60.",
+            description
+        ).getOrThrow().jsonObject
+        val title = json["title"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+            ?: throw IllegalStateException("Model did not extract a title")
+        val startText = json["start"]?.jsonPrimitive?.contentOrNull
+            ?: throw IllegalStateException("Model did not extract a start time")
+        val start = LocalDateTime.parse(startText.take(16)).atZone(zone).toInstant().toEpochMilli()
+        val duration = json["durationMinutes"]?.jsonPrimitive?.intOrNull ?: 60
         
         return EventDetails(
-            title = "Event: ${description.take(50)}",
+            title = title,
             description = description,
-            startTime = tomorrow,
-            endTime = tomorrow + (60 * 60 * 1000L), // 1 hour
-            location = null,
-            reminder = 15 // 15 minutes before
+            startTime = start,
+            endTime = start + duration * 60_000L,
+            location = json["location"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() && it != "null" },
+            reminder = json["reminderMinutes"]?.jsonPrimitive?.intOrNull
         )
     }
     
@@ -280,6 +313,10 @@ class CalendarService {
     
     private fun generateEventId(): String {
         return "evt_${System.currentTimeMillis()}_${(Math.random() * 10000).toInt()}"
+    }
+    
+    companion object {
+        const val LOCAL_CALENDAR_ID = "layla-local"
     }
 }
 

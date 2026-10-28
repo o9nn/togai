@@ -18,7 +18,10 @@ import java.util.UUID
  * - Scheduled notifications
  * - Notification channels
  */
-class NotificationService {
+class NotificationService(
+    /** When set, notifications are posted to the system tray; otherwise they live in the in-app feed. */
+    private val context: android.content.Context? = null
+) {
     
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     
@@ -38,17 +41,9 @@ class NotificationService {
     suspend fun showNotification(notification: Notification): Result<String> {
         return withContext(Dispatchers.Main) {
             try {
-                // Stub: In actual implementation, would use Notifee
-                // await notifee.displayNotification({
-                //     title: notification.title,
-                //     body: notification.body,
-                //     android: {
-                //         channelId: notification.channelId,
-                //         actions: notification.actions
-                //     }
-                // })
+                context?.let { postToSystemTray(it, notification) }
                 
-                // Add to notification list
+                // Add to the in-app notification feed
                 _notifications.value = _notifications.value + notification
                 
                 Result.success(notification.id)
@@ -56,6 +51,25 @@ class NotificationService {
                 Result.failure(e)
             }
         }
+    }
+    
+    private fun postToSystemTray(context: android.content.Context, notification: Notification) {
+        val manager = androidx.core.app.NotificationManagerCompat.from(context)
+        if (!manager.areNotificationsEnabled()) throw SecurityException("Notifications are disabled for this app")
+        val channel = channels[notification.channelId]
+        manager.createNotificationChannel(
+            androidx.core.app.NotificationChannelCompat.Builder(
+                notification.channelId, android.app.NotificationManager.IMPORTANCE_DEFAULT
+            ).setName(channel?.name ?: notification.channelId).build()
+        )
+        val built = androidx.core.app.NotificationCompat.Builder(context, notification.channelId)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle(notification.title)
+            .setContentText(notification.body)
+            .setStyle(androidx.core.app.NotificationCompat.BigTextStyle().bigText(notification.body))
+            .setAutoCancel(true)
+            .build()
+        manager.notify(notification.id.hashCode(), built)
     }
     
     /**

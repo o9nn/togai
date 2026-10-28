@@ -43,11 +43,8 @@ class CognitiveMeshAPI(
         // Initialize mesh state monitoring
         startMeshMonitoring()
         
-        // In a real implementation, this would start actual HTTP/WebSocket server
-        // For now, we simulate the server being ready
-        println("✅ Cognitive Mesh API started successfully")
-        println("   📡 REST API: http://localhost:$port/api/v1/")
-        println("   🔌 WebSocket: ws://localhost:$port/ws/mesh")
+        // The API is served in-process (call its methods directly); no network listener is opened
+        println("✅ Cognitive Mesh API ready (in-process; no HTTP/WebSocket listener on port $port)")
         println("   🤖 Agents: ${connectedAgents.size}")
         println("   📊 Sensors: ${sensorStreams.size}")
         println("   ⚡ Effectors: ${effectorChannels.size}")

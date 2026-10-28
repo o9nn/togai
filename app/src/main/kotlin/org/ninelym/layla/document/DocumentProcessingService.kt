@@ -3,7 +3,19 @@ package org.ninelym.layla.document
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import org.ninelym.llm.GenerationOptions
+import org.ninelym.llm.LanguageModel
+import org.ninelym.llm.LanguageModels
+import org.ninelym.llm.OpenAICompatibleModel
+import org.ninelym.llm.ask
+import org.ninelym.llm.askJson
 import java.io.File
+import java.util.zip.ZipFile
 
 /**
  * Document Processing Service
@@ -21,7 +33,11 @@ import java.io.File
  * 
  * Phase 3: Integration
  */
-class DocumentProcessingService {
+class DocumentProcessingService(
+    private val modelProvider: () -> Result<LanguageModel> = { LanguageModels.current() },
+    /** Vision-capable endpoint used to read scanned/PDF pages. */
+    private val visionProvider: () -> Result<OpenAICompatibleModel> = { LanguageModels.currentEndpoint() }
+) {
     
     // State flows for reactive updates
     private val _documents = MutableStateFlow<List<Document>>(emptyList())
@@ -124,7 +140,7 @@ class DocumentProcessingService {
             val documentSummary = DocumentSummary(
                 documentId = documentId,
                 summary = summary,
-                keyPoints = extractKeyPoints(text),
+                keyPoints = if (useAI) extractKeyPoints(text) else extractiveKeyPoints(text),
                 wordCount = text.split("\\s+".toRegex()).size,
                 generatedAt = System.currentTimeMillis()
             )
@@ -164,7 +180,7 @@ class DocumentProcessingService {
                 documentId = documentId,
                 question = question,
                 answer = answer,
-                confidence = 0.85f, // Placeholder confidence score
+                confidence = null,
                 relevantPassages = listOf(relevantContext),
                 timestamp = System.currentTimeMillis()
             )
@@ -227,18 +243,8 @@ class DocumentProcessingService {
             // Extract text if not already extracted
             val text = document.extractedText ?: extractText(documentId).getOrThrow()
             
-            // Analyze content and determine category
-            val category = determineCategory(text, document.fileName)
-            val subcategories = determineSubcategories(text, category)
-            val tags = extractTags(text)
-            
-            val documentCategory = DocumentCategory(
-                documentId = documentId,
-                primaryCategory = category,
-                subcategories = subcategories,
-                tags = tags,
-                confidence = 0.80f
-            )
+            // The model reads the content and categorizes it
+            val documentCategory = classifyDocument(documentId, text, document.fileName)
             
             // Update document with category
             updateDocument(documentId) { it.copy(category = documentCategory) }
@@ -316,27 +322,60 @@ class DocumentProcessingService {
         }
     }
     
-    private fun extractTextFromPdf(filePath: String): String {
-        // Placeholder: In production, use Apache PDFBox
-        return "Extracted text from PDF: $filePath\n\nThis is a placeholder implementation. " +
-               "In production, this would use Apache PDFBox to extract actual text from the PDF."
+    /**
+     * PDF pages are rendered and read by the vision model (works for scanned documents too).
+     */
+    private suspend fun extractTextFromPdf(filePath: String): String {
+        val vision = visionProvider().getOrThrow()
+        val descriptor = android.os.ParcelFileDescriptor.open(File(filePath), android.os.ParcelFileDescriptor.MODE_READ_ONLY)
+        val pages = android.graphics.pdf.PdfRenderer(descriptor).use { renderer ->
+            (0 until renderer.pageCount).map { index ->
+                renderer.openPage(index).use { page ->
+                    val bitmap = android.graphics.Bitmap.createBitmap(page.width * 2, page.height * 2, android.graphics.Bitmap.Config.ARGB_8888)
+                    bitmap.eraseColor(android.graphics.Color.WHITE)
+                    page.render(bitmap, null, null, android.graphics.pdf.PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                    java.io.ByteArrayOutputStream().also { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
+                }
+            }
+        }
+        val text = StringBuilder()
+        for (png in pages) {
+            if (text.isNotEmpty()) text.append("\n\n")
+            text.append(vision.describeImage(png, "Transcribe all text on this page exactly, preserving reading order. Output only the text.",
+                options = GenerationOptions(temperature = 0f, maxTokens = 2048)).getOrThrow())
+        }
+        return text.toString()
     }
     
     private fun extractTextFromPlainText(filePath: String): String {
         return File(filePath).readText()
     }
     
+    /**
+     * DOCX is a zip of WordprocessingML; paragraphs are `<w:p>` and text runs are `<w:t>`.
+     */
     private fun extractTextFromWord(filePath: String): String {
-        // Placeholder: In production, use Apache POI
-        return "Extracted text from Word document: $filePath\n\nThis is a placeholder implementation. " +
-               "In production, this would use Apache POI to extract actual text from the document."
+        if (filePath.endsWith(".doc", ignoreCase = true)) {
+            throw UnsupportedOperationException("Legacy binary .doc files aren't supported; save the document as .docx")
+        }
+        ZipFile(filePath).use { zip ->
+            val entry = zip.getEntry("word/document.xml") ?: throw IllegalArgumentException("Not a DOCX file: $filePath")
+            val xml = zip.getInputStream(entry).bufferedReader().readText()
+            return xml.split("</w:p>").map { paragraph ->
+                Regex("<w:t[^>]*>([^<]*)</w:t>").findAll(paragraph).joinToString("") { it.groupValues[1] }
+            }.filter { it.isNotBlank() }.joinToString("\n")
+                .replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&apos;", "'")
+        }
     }
     
-    private fun generateAISummary(text: String, maxLength: Int): String {
-        // Placeholder: In production, use AI inference service
-        val truncated = text.take(maxLength)
-        return "AI-generated summary: ${truncated.take(200)}..."
-    }
+    /** Keeps prompts within a small model's context window. */
+    private fun excerpt(text: String, limit: Int = 12_000) = if (text.length <= limit) text else text.take(limit) + "\n[...truncated]"
+    
+    private suspend fun generateAISummary(text: String, maxLength: Int): String =
+        modelProvider().getOrThrow().ask(
+            "Summarize the document in at most $maxLength characters. Output only the summary.",
+            excerpt(text)
+        ).getOrThrow()
     
     private fun generateExtractiveSummary(text: String, maxLength: Int): String {
         // Simple extractive summary: take first sentences up to maxLength
@@ -349,88 +388,91 @@ class DocumentProcessingService {
         return summary.trim()
     }
     
-    private fun extractKeyPoints(text: String): List<String> {
-        // Placeholder: Extract key sentences or phrases
-        return text.split(". ").take(5).map { it.trim() }
-    }
+    private suspend fun extractKeyPoints(text: String): List<String> =
+        modelProvider().getOrThrow().ask(
+            "List the 3-7 key points of the document, one per line, without numbering or bullets.",
+            excerpt(text)
+        ).getOrThrow().lines().map { it.trim().trimStart('-', '*', '•', ' ') }.filter { it.isNotBlank() }
     
+    private fun extractiveKeyPoints(text: String): List<String> = text.split(". ").take(5).map { it.trim() }
+    
+    /**
+     * Picks the passages that share the most terms with the question, up to [contextWindow] chars.
+     */
     private fun findRelevantContext(text: String, question: String, contextWindow: Int): String {
-        // Placeholder: Use semantic search in production
-        // For now, just return the first contextWindow characters
-        return text.take(contextWindow)
+        val terms = question.lowercase().split(Regex("\\W+")).filter { it.length > 2 }.toSet()
+        val passages = text.split(Regex("\\n\\s*\\n|(?<=[.!?])\\s+")).filter { it.isNotBlank() }
+        val ranked = passages.withIndex().sortedByDescending { (_, p) ->
+            val words = p.lowercase().split(Regex("\\W+")).toSet()
+            terms.count { it in words }
+        }
+        val chosen = mutableListOf<IndexedValue<String>>()
+        var size = 0
+        for (p in ranked) {
+            if (size + p.value.length > contextWindow) break
+            chosen += p
+            size += p.value.length + 1
+        }
+        return chosen.sortedBy { it.index }.joinToString("\n") { it.value }.ifBlank { text.take(contextWindow) }
     }
     
-    private fun generateAnswer(question: String, context: String): String {
-        // Placeholder: In production, use AI inference service
-        return "Based on the document context, here is the answer to '$question': [AI-generated answer would appear here]"
-    }
+    private suspend fun generateAnswer(question: String, context: String): String =
+        modelProvider().getOrThrow().ask(
+            "Answer the question using only the document excerpts. If they don't contain the answer, say so.",
+            "Document excerpts:\n$context\n\nQuestion: $question"
+        ).getOrThrow()
     
-    private fun compareDocuments(documents: List<Document>, texts: List<String>): MultiDocumentAnalysis {
+    private suspend fun analyzeWithModel(
+        documents: List<Document>,
+        texts: List<String>,
+        type: AnalysisType,
+        instruction: String
+    ): MultiDocumentAnalysis {
+        val perDocument = 12_000 / documents.size.coerceAtLeast(1)
+        val corpus = documents.zip(texts).joinToString("\n\n") { (doc, text) ->
+            "=== ${doc.fileName} ===\n${excerpt(text, perDocument)}"
+        }
+        val json = modelProvider().getOrThrow().askJson(
+            "$instruction Respond as JSON: {\"findings\": string, \"insights\": [string]}.",
+            corpus
+        ).getOrThrow().jsonObject
         return MultiDocumentAnalysis(
             documentIds = documents.map { it.id },
-            analysisType = AnalysisType.COMPARISON,
-            findings = "Documents compared. Key differences and similarities identified.",
-            insights = listOf(
-                "Document 1 focuses on topic A",
-                "Document 2 focuses on topic B",
-                "Common themes: X, Y, Z"
-            ),
+            analysisType = type,
+            findings = json["findings"]?.jsonPrimitive?.contentOrNull
+                ?: throw IllegalStateException("Model analysis had no findings"),
+            insights = json.stringList("insights"),
             timestamp = System.currentTimeMillis()
         )
     }
     
-    private fun synthesizeDocuments(documents: List<Document>, texts: List<String>): MultiDocumentAnalysis {
-        return MultiDocumentAnalysis(
-            documentIds = documents.map { it.id },
-            analysisType = AnalysisType.SYNTHESIS,
-            findings = "Documents synthesized into unified perspective.",
-            insights = listOf(
-                "Combined insights from all documents",
-                "Synthesized key themes",
-                "Integrated conclusions"
-            ),
-            timestamp = System.currentTimeMillis()
+    private suspend fun compareDocuments(documents: List<Document>, texts: List<String>) =
+        analyzeWithModel(documents, texts, AnalysisType.COMPARISON, "Compare these documents: key differences and similarities.")
+    
+    private suspend fun synthesizeDocuments(documents: List<Document>, texts: List<String>) =
+        analyzeWithModel(documents, texts, AnalysisType.SYNTHESIS, "Synthesize these documents into one unified perspective.")
+    
+    private suspend fun findCommonalities(documents: List<Document>, texts: List<String>) =
+        analyzeWithModel(documents, texts, AnalysisType.COMMONALITY, "Identify the themes, patterns and concepts these documents share.")
+    
+    private suspend fun classifyDocument(documentId: String, text: String, fileName: String): DocumentCategory {
+        val json = modelProvider().getOrThrow().askJson(
+            "Categorize the document. Respond as JSON: {\"category\": string, \"subcategories\": [string], \"tags\": [string]}. " +
+                "Use a broad category such as Technical, Business, Legal, Academic, Personal or General.",
+            "File name: $fileName\n\n${excerpt(text, 6000)}"
+        ).getOrThrow().jsonObject
+        return DocumentCategory(
+            documentId = documentId,
+            primaryCategory = json["category"]?.jsonPrimitive?.contentOrNull
+                ?: throw IllegalStateException("Model did not return a category"),
+            subcategories = json.stringList("subcategories"),
+            tags = json.stringList("tags"),
+            confidence = null
         )
     }
     
-    private fun findCommonalities(documents: List<Document>, texts: List<String>): MultiDocumentAnalysis {
-        return MultiDocumentAnalysis(
-            documentIds = documents.map { it.id },
-            analysisType = AnalysisType.COMMONALITY,
-            findings = "Common themes and patterns identified across documents.",
-            insights = listOf(
-                "Shared topic: Theme A",
-                "Common patterns: Pattern B",
-                "Recurring concepts: Concept C"
-            ),
-            timestamp = System.currentTimeMillis()
-        )
-    }
-    
-    private fun determineCategory(text: String, fileName: String): String {
-        // Placeholder: Use ML classification in production
-        val keywords = mapOf(
-            "Technical" to listOf("code", "software", "algorithm", "api"),
-            "Business" to listOf("revenue", "profit", "strategy", "market"),
-            "Legal" to listOf("contract", "agreement", "clause", "terms"),
-            "Academic" to listOf("research", "study", "analysis", "conclusion")
-        )
-        
-        val lowerText = text.lowercase()
-        return keywords.maxByOrNull { (_, words) ->
-            words.count { lowerText.contains(it) }
-        }?.key ?: "General"
-    }
-    
-    private fun determineSubcategories(text: String, primaryCategory: String): List<String> {
-        // Placeholder: Return relevant subcategories based on primary category
-        return listOf("${primaryCategory}_SubA", "${primaryCategory}_SubB")
-    }
-    
-    private fun extractTags(text: String): List<String> {
-        // Placeholder: Extract relevant tags from text
-        return listOf("tag1", "tag2", "tag3")
-    }
+    private fun Map<String, JsonElement>.stringList(key: String): List<String> =
+        (this[key] as? JsonArray)?.mapNotNull { it.jsonPrimitive.contentOrNull } ?: emptyList()
     
     private fun updateDocument(documentId: String, transform: (Document) -> Document) {
         _documents.value = _documents.value.map { doc ->
@@ -494,7 +536,8 @@ data class DocumentAnswer(
     val documentId: String,
     val question: String,
     val answer: String,
-    val confidence: Float,
+    /** Null: the model doesn't report a calibrated confidence. */
+    val confidence: Float?,
     val relevantPassages: List<String>,
     val timestamp: Long
 )
@@ -512,7 +555,7 @@ data class DocumentCategory(
     val primaryCategory: String,
     val subcategories: List<String>,
     val tags: List<String>,
-    val confidence: Float
+    val confidence: Float?
 )
 
 enum class AnalysisType {

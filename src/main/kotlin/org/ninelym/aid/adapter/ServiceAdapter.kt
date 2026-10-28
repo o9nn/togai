@@ -15,15 +15,17 @@ import org.ninelym.aid.driver.*
 import org.ninelym.aid.hub.*
 import org.ninelym.aid.endpoint.*
 import org.ninelym.aid.persona.*
+import org.ninelym.llm.LanguageModel
+import org.ninelym.llm.LanguageModels
 
 /**
  * Adapter for wrapping any service as an AID endpoint
  */
 abstract class ServiceAdapter<T>(
     private val service: T,
-    override val endpointName: String,
-    override val endpointDescription: String,
-    override val endpointCapabilities: Set<ServiceCapability>
+    endpointName: String,
+    endpointDescription: String,
+    endpointCapabilities: Set<ServiceCapability>
 ) : BaseEndpointAdapter(endpointName, endpointDescription, endpointCapabilities) {
 
     /**
@@ -145,10 +147,13 @@ class LegacyCharacterAdapter(
     private val name: String,
     private val personalityTraits: Map<String, Float>,
     private val responseTemplates: List<String> = emptyList(),
-    private val emotionalResponses: Map<String, Float> = emptyMap()
+    private val emotionalResponses: Map<String, Float> = emptyMap(),
+    modelProvider: () -> Result<LanguageModel> = { LanguageModels.current() }
 ) : PersonaDriver {
 
     private val _spec: PersonaSpec = createSpecFromLegacy()
+    // Legacy templates live on as speech-pattern style hints; the reply comes from the model
+    private val generator = BasePersonaDriver(_spec, modelProvider)
     private var _state: PersonaState = PersonaState(specId = _spec.id, currentTensor = _spec.toTensor())
 
     override val spec: PersonaSpec get() = _spec
@@ -164,16 +169,11 @@ class LegacyCharacterAdapter(
         inputTensor: AIDTensor,
         context: Map<String, Any>
     ): AIDResult<PersonaOutput> {
-        val modulatedTensor = modulate(inputTensor)
-        val processedContent = applyLegacyPatterns(input)
-
-        val output = PersonaOutput(
-            content = processedContent,
-            tensor = modulatedTensor,
-            emotionalState = _state.emotionalState
-        )
-
-        return AIDResult.Success(output)
+        generator.updateMemory(_state.memoryContext)
+        return when (val generated = generator.process(input, inputTensor, context)) {
+            is AIDResult.Success -> AIDResult.Success(generated.data.copy(emotionalState = _state.emotionalState))
+            else -> generated
+        }
     }
 
     override fun modulate(tensor: AIDTensor): AIDTensor {
@@ -218,18 +218,6 @@ class LegacyCharacterAdapter(
             personalityTraits = personalityTraits,
             responseTemplates = responseTemplates
         )
-    }
-
-    private fun applyLegacyPatterns(input: String): String {
-        if (responseTemplates.isEmpty()) return input
-
-        // Apply legacy response templates if available
-        val template = responseTemplates.randomOrNull()
-        return if (template != null && Math.random() < 0.3) {
-            "$template $input"
-        } else {
-            input
-        }
     }
 }
 

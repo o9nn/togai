@@ -22,7 +22,13 @@ import java.io.File
  * 
  * Phase 3: Integration
  */
-class SharingService {
+class SharingService(
+    /** Needed to launch Android share intents; without it, sharing fails rather than pretending. */
+    private val context: android.content.Context? = null,
+    /** Looks up real conversations for export. */
+    private val conversations: ((String) -> org.ninelym.layla.chat.Conversation?)? = null,
+    private val exportDir: File = File(System.getProperty("java.io.tmpdir"), "exports")
+) {
     
     // State flows for reactive updates
     private val _sharingState = MutableStateFlow<SharingState>(SharingState.IDLE)
@@ -142,20 +148,9 @@ class SharingService {
         return try {
             _sharingState.value = SharingState.EXPORTING
             
-            // Placeholder: In production, fetch actual conversation data
-            val conversationData = """
-                {
-                  "conversationId": "$conversationId",
-                  "messages": [
-                    {"role": "user", "content": "Hello"},
-                    {"role": "assistant", "content": "Hi! How can I help you?"}
-                  ],
-                  "metadata": {
-                    "exportedAt": ${System.currentTimeMillis()},
-                    "format": "$format"
-                  }
-                }
-            """.trimIndent()
+            val lookup = conversations ?: throw IllegalStateException("No conversation source configured")
+            val conversation = lookup(conversationId) ?: throw IllegalArgumentException("Conversation not found: $conversationId")
+            val conversationData = formatConversation(conversation, format, includeMetadata)
             
             val exportFile = createExportFile(conversationId, format, conversationData)
             
@@ -237,7 +232,6 @@ class SharingService {
                 return Result.failure(Exception("File not found: $filePath"))
             }
             
-            // Placeholder: In production, integrate with cloud storage SDKs
             val result = uploadToCloud(file, cloudProvider, destinationPath)
             
             _sharingState.value = SharingState.IDLE
@@ -312,13 +306,66 @@ class SharingService {
         return "<html><body><p>${markdown.replace("\n", "</p><p>")}</p></body></html>"
     }
     
+    private fun formatConversation(
+        conversation: org.ninelym.layla.chat.Conversation,
+        format: ExportFormat,
+        includeMetadata: Boolean
+    ): String {
+        fun esc(v: String) = v.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
+        val messages = conversation.messages
+        return when (format) {
+            ExportFormat.JSON -> buildString {
+                append("{\n  \"conversationId\": \"${esc(conversation.id)}\",\n  \"title\": \"${esc(conversation.title)}\",\n  \"messages\": [\n")
+                append(messages.joinToString(",\n") {
+                    "    {\"role\": \"${it.role.name.lowercase()}\", \"content\": \"${esc(it.content)}\", \"timestamp\": ${it.timestamp}}"
+                })
+                append("\n  ]")
+                if (includeMetadata) append(",\n  \"metadata\": {\"exportedAt\": ${System.currentTimeMillis()}, \"messageCount\": ${messages.size}}")
+                append("\n}")
+            }
+            ExportFormat.MARKDOWN -> "# ${conversation.title}\n\n" +
+                messages.joinToString("\n\n") { "**${it.role.name.lowercase()}:** ${it.content}" }
+            ExportFormat.CSV -> "role,timestamp,content\n" +
+                messages.joinToString("\n") { "${it.role.name.lowercase()},${it.timestamp},\"${it.content.replace("\"", "\"\"")}\"" }
+            ExportFormat.HTML -> "<html><body><h1>${conversation.title}</h1>" +
+                messages.joinToString("") { "<p><b>${it.role.name.lowercase()}:</b> ${it.content}</p>" } + "</body></html>"
+            ExportFormat.TXT -> messages.joinToString("\n\n") { "${it.role.name.lowercase()}: ${it.content}" }
+            ExportFormat.PDF -> throw UnsupportedOperationException("PDF export isn't supported; use MARKDOWN or HTML")
+        }
+    }
+    
+    private fun shareIntent(shareData: ShareData, targetPackage: String? = null): android.content.Intent {
+        val intent = android.content.Intent(android.content.Intent.ACTION_SEND)
+        if (shareData.type == ShareType.IMAGE) {
+            val ctx = context!!
+            val uri = androidx.core.content.FileProvider.getUriForFile(ctx, "${ctx.packageName}.fileprovider", File(shareData.content))
+            intent.type = shareData.mimeType ?: "image/*"
+            intent.putExtra(android.content.Intent.EXTRA_STREAM, uri)
+            intent.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            shareData.title?.let { intent.putExtra(android.content.Intent.EXTRA_TEXT, it) }
+        } else {
+            intent.type = "text/plain"
+            intent.putExtra(android.content.Intent.EXTRA_TEXT, shareData.content)
+            shareData.title?.let { intent.putExtra(android.content.Intent.EXTRA_SUBJECT, it) }
+        }
+        targetPackage?.let { intent.setPackage(it) }
+        return intent
+    }
+    
+    /**
+     * Opens Android's share sheet. The result records that the sheet was shown; whether the
+     * user completed the share is up to them.
+     */
     private fun executeShare(shareData: ShareData): ShareResult {
-        // Placeholder: In production, use Android's share intent
+        val ctx = context ?: throw IllegalStateException("Sharing needs an Android Context")
+        val chooser = android.content.Intent.createChooser(shareIntent(shareData), shareData.title)
+            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        ctx.startActivity(chooser)
         return ShareResult(
             success = true,
-            sharedTo = "system",
+            sharedTo = "system share sheet",
             timestamp = System.currentTimeMillis(),
-            message = "Content shared successfully"
+            message = "Share sheet opened"
         )
     }
     
@@ -327,12 +374,30 @@ class SharingService {
         platform: SocialPlatform,
         options: ShareOptions
     ): ShareResult {
-        // Placeholder: In production, integrate with social media SDKs
+        val ctx = context ?: throw IllegalStateException("Sharing needs an Android Context")
+        val pkg = when (platform) {
+            SocialPlatform.TWITTER -> "com.twitter.android"
+            SocialPlatform.FACEBOOK -> "com.facebook.katana"
+            SocialPlatform.LINKEDIN -> "com.linkedin.android"
+            SocialPlatform.WHATSAPP -> "com.whatsapp"
+            SocialPlatform.TELEGRAM -> "org.telegram.messenger"
+            SocialPlatform.EMAIL -> null
+        }
+        val intent = if (platform == SocialPlatform.EMAIL) {
+            android.content.Intent(android.content.Intent.ACTION_SENDTO, android.net.Uri.parse("mailto:"))
+                .putExtra(android.content.Intent.EXTRA_TEXT, shareData.content)
+                .putExtra(android.content.Intent.EXTRA_SUBJECT, shareData.title)
+        } else shareIntent(shareData, pkg)
+        intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        if (intent.resolveActivity(ctx.packageManager) == null) {
+            throw IllegalStateException("${platform.name} is not installed")
+        }
+        ctx.startActivity(intent)
         return ShareResult(
             success = true,
             sharedTo = platform.name,
             timestamp = System.currentTimeMillis(),
-            message = "Shared to ${platform.name}"
+            message = "Opened ${platform.name} to share"
         )
     }
     
@@ -341,14 +406,8 @@ class SharingService {
         cloudProvider: CloudProvider,
         destinationPath: String?
     ): ShareResult {
-        // Placeholder: In production, integrate with cloud storage SDKs
-        return ShareResult(
-            success = true,
-            sharedTo = cloudProvider.name,
-            timestamp = System.currentTimeMillis(),
-            message = "Uploaded to ${cloudProvider.name}",
-            url = "https://${cloudProvider.name.lowercase()}.com/files/${file.name}"
-        )
+        // No cloud SDK is bundled, so nothing can be uploaded
+        throw UnsupportedOperationException("Upload to ${cloudProvider.name} isn't available: no ${cloudProvider.name} client is configured")
     }
     
     private fun createExportFile(
@@ -366,7 +425,6 @@ class SharingService {
         }
         
         val fileName = "${name}_${System.currentTimeMillis()}.$extension"
-        val exportDir = File("/tmp/exports")
         exportDir.mkdirs()
         
         val file = File(exportDir, fileName)

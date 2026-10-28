@@ -3,6 +3,7 @@ package org.ninelym.layla.sd
 import org.ninelym.ai.LocalImageGenerator
 import org.ninelym.ai.ImageStyle
 import org.ninelym.ai.ImageGenerationResult
+import org.ninelym.llm.LanguageModels
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
@@ -17,7 +18,7 @@ class StableDiffusionService(
     private val outputDir: File = File(System.getProperty("java.io.tmpdir"), "togai-sd")
 ) {
     
-    private val imageGenerator = LocalImageGenerator()
+    private var imageGenerator = LocalImageGenerator()
     private val generationHistory = mutableListOf<GenerationRecord>()
     private val activeGenerations = ConcurrentHashMap<String, GenerationTask>()
     
@@ -156,9 +157,13 @@ class StableDiffusionService(
      */
     suspend fun loadModel(modelName: String): Result<Unit> {
         return try {
+            // Select the image model by its id on the serving endpoint
+            val generator = LocalImageGenerator(imageModels = mapOf("base" to modelName))
+            if (!generator.initialize()) return Result.failure(Exception("Failed to initialize image generator"))
+            imageGenerator = generator
             currentModel = ModelInfo(
                 name = modelName,
-                path = "/models/$modelName",
+                path = LanguageModels.currentEndpoint().getOrNull()?.config?.baseUrl ?: "unconfigured",
                 loadedAt = System.currentTimeMillis()
             )
             Result.success(Unit)
@@ -174,8 +179,8 @@ class StableDiffusionService(
     
     private fun loadDefaultModel() {
         currentModel = ModelInfo(
-            name = "stable-diffusion-v1.5",
-            path = "/models/sd-v1.5",
+            name = LocalImageGenerator.DEFAULT_IMAGE_MODEL,
+            path = LanguageModels.currentEndpoint().getOrNull()?.config?.baseUrl ?: "unconfigured",
             loadedAt = System.currentTimeMillis()
         )
     }

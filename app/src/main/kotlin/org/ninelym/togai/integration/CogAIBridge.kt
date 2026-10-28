@@ -367,9 +367,10 @@ class CogAIBridge private constructor(
 
         val response = chat(messages, model, provider)
 
-        return response.choices.firstOrNull()?.message?.content
-            ?: response.error
-            ?: "No response"
+        // A failure is raised, never returned as if it were the model's answer
+        response.error?.let { throw CogAIException("CogAI request failed: $it") }
+        return response.choices.firstOrNull()?.message?.content?.takeIf { it.isNotBlank() }
+            ?: throw CogAIException("CogAI returned no answer")
     }
 
     /**
@@ -690,3 +691,6 @@ class CogAIBridge private constructor(
         data class Error(val message: String) : InstallResult()
     }
 }
+
+/** Raised when the CogAI server can't produce a model answer. */
+class CogAIException(message: String) : RuntimeException(message)

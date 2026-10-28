@@ -84,15 +84,17 @@ class LaylaAssistant {
     private val voiceInputService = VoiceInputService()
     private val voiceOutputService = VoiceOutputService()
     private val characterService = EnhancedCharacterService()
-    private val taskerService = TaskerPluginService()
+    private val taskerService = TaskerPluginService(inferenceService)
     private val calendarService = CalendarService()
     private val taskManagerService = EnhancedTaskManagerService()
     
     // Phase 3 Integration services
     private val documentService = DocumentProcessingService()
     private val billingService = BillingService()
-    private val sharingService = SharingService()
-    private val advancedWorkflowService = AdvancedTaskerWorkflowService()
+    private val sharingService = SharingService(conversations = { chatService.getConversation(it) })
+    private val advancedWorkflowService = AdvancedTaskerWorkflowService(
+        notifier = { message -> notificationService.showSimpleNotification("Layla workflow", message, "task_completion") }
+    )
     private val cloudSyncService = CloudSyncService()
     
     // Phase 4 Polish & Scale services
@@ -334,6 +336,12 @@ class LaylaAssistant {
     }
     
     /**
+     * Ask Layla directly and get the model's reply text
+     */
+    suspend fun reply(message: String): Result<String> =
+        inferenceService.infer(message).map { it.text }
+    
+    /**
      * Remember text (text processing feature)
      */
     suspend fun rememberText(text: String, source: String? = null): Result<String> {
@@ -365,7 +373,7 @@ class LaylaAssistant {
         val result = authService.signIn(email, password)
         return if (result.isSuccess) {
             val user = result.getOrThrow()
-            Result.success("Welcome, ${user.name}!")
+            Result.success("Signed in as ${user.email}")
         } else {
             Result.failure(result.exceptionOrNull() ?: Exception("Sign in failed"))
         }
@@ -543,9 +551,13 @@ suspend fun main() {
         println("📋 Phase 2: Authentication Demo")
         println("─".repeat(60))
         println("  Signing in user...")
+        // Local accounts: create one if it doesn't exist yet, then sign in
+        layla.getAuthService().signUp("john.doe@example.com", "password123", "John Doe")
         val signInResult = layla.signIn("john.doe@example.com", "password123")
         if (signInResult.isSuccess) {
             println("  ✅ ${signInResult.getOrThrow()}")
+        } else {
+            println("  ❌ Sign in failed: ${signInResult.exceptionOrNull()?.message}")
         }
         println()
         
@@ -651,12 +663,18 @@ suspend fun main() {
             delay(1000)
             val transcript = voiceInput.stopRecording(recordSession.getOrThrow())
             if (transcript.isSuccess) {
-                println("  ✅ Transcribed: \"${transcript.getOrThrow().text}\"")
+                val heard = transcript.getOrThrow().text
+                println("  ✅ Transcribed: \"$heard\"")
                 
-                // Test TTS
-                println("  Speaking response...")
-                voiceOutput.speak("Hello! I understood your voice input perfectly.")
-                println("  ✅ Voice output completed")
+                // Speak Layla's model-generated reply to what was heard
+                layla.reply(heard).onSuccess { answer ->
+                    println("  Speaking response: $answer")
+                    voiceOutput.speak(answer)
+                        .onSuccess { println("  ✅ Voice output completed") }
+                        .onFailure { println("  ❌ Voice output failed: ${it.message}") }
+                }.onFailure { println("  ❌ Model reply failed: ${it.message}") }
+            } else {
+                println("  ❌ Transcription failed: ${transcript.exceptionOrNull()?.message}")
             }
         }
         println()
@@ -671,9 +689,12 @@ suspend fun main() {
         characterService.setActiveCharacter("creative")
         println("  ✅ Active character: Aria (Creative Companion)")
         
-        println("  Setting character expression...")
-        characterService.setExpression("creative", org.ninelym.layla.character.Expression.HAPPY)
-        println("  ✅ Expression set to HAPPY")
+        println("  Syncing expression with a model-generated line...")
+        layla.reply("Say one excited sentence about painting.").onSuccess { line ->
+            characterService.syncWithSpeech("creative", line)
+                .onSuccess { println("  ✅ \"$line\" -> expression chosen by the model") }
+                .onFailure { println("  ❌ Expression sync failed: ${it.message}") }
+        }.onFailure { println("  ❌ Model reply failed: ${it.message}") }
         
         println("  Available characters:")
         characterService.getAvailableCharacters().forEach { char ->
@@ -782,7 +803,7 @@ suspend fun main() {
             val answerResult = docService.askQuestion(doc.id, "What is the main topic?")
             if (answerResult.isSuccess) {
                 val answer = answerResult.getOrThrow()
-                println("  ✅ Question answered (${answer.confidence * 100}% confidence)")
+                println("  ✅ Answer: ${answer.answer}")
             }
         }
         println()

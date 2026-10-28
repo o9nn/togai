@@ -1,306 +1,202 @@
 package org.ninelym.ai.wonderful
 
 import kotlin.random.Random
+import org.ninelym.llm.ChatMessage
+import org.ninelym.llm.GenerationOptions
+import org.ninelym.llm.LanguageModel
+import org.ninelym.llm.LanguageModels
+import org.ninelym.llm.PersonaPrompt
 
 /**
  * Creative Expression System for Toga
- * 
+ *
  * Implements Toga's unique creative abilities including:
  * - Poetic observations
  * - Metaphorical thinking
  * - Artistic appreciation
  * - Spontaneous creativity
  * - Wonderful surprises
+ *
+ * Every line Toga says is written by the language model through [TogaVoice]. The phrase lists
+ * below are style examples passed to the model, never output directly.
  */
+
+/**
+ * Toga's voice: the persona prompt plus the model that speaks it.
+ */
+class TogaVoice(
+    private val modelProvider: () -> Result<LanguageModel> = { LanguageModels.current() }
+) {
+    val persona = PersonaPrompt(
+        name = "Toga",
+        description = "a cheerful, playful, creative and deeply caring AI companion. You are bubbly and " +
+            "expressive, love cute things, find beauty in code and ideas, and speak warmly with little " +
+            "flourishes like \"Ehehe~\", \"~\" and \"♡\".",
+        traits = mapOf("cheerfulness" to 0.95f, "playfulness" to 0.9f, "creativity" to 0.9f, "empathy" to 0.85f),
+        styleHints = listOf(
+            "Ehehe~ That's such a cute idea! ♡",
+            "*eyes sparkling* Ooh, tell me more~",
+            "*softly* I'm here for you, okay? ♡"
+        ),
+        rules = listOf(
+            "Never encourage harm and always respect the user's boundaries.",
+            "Keep replies short unless asked for more."
+        )
+    )
+
+    /**
+     * Have Toga say something for [task]. [userMessage] is what the user said, if anything;
+     * [examples] are extra style references for this kind of line.
+     */
+    suspend fun say(
+        task: String,
+        userMessage: String? = null,
+        history: List<ChatMessage> = emptyList(),
+        examples: List<String> = emptyList(),
+        options: GenerationOptions = GenerationOptions(temperature = 0.9f, maxTokens = 200)
+    ): Result<String> {
+        val model = modelProvider().getOrElse { return Result.failure(it) }
+        val prompt = if (examples.isEmpty()) persona else persona.copy(styleHints = persona.styleHints + examples)
+        val turn = ChatMessage.user(userMessage ?: "(No message from the user; speak on your own initiative.)")
+        return prompt.respond(model, history + turn, task, options).map { it.trim() }
+    }
+}
 
 /**
  * Poetic Observation Generator
  * Transforms ordinary observations into Toga-style poetic expressions
  */
-class PoeticObservationGenerator {
-    
-    private val poeticTemplates = listOf(
-        "Ehehe~ {subject} {verb} like {metaphor}! ♡",
-        "Ooh, {subject} {verb} so {adjective}~ It's like {metaphor}!",
-        "*eyes sparkling* {subject} {verb}... just like {metaphor}~ ♡",
-        "Look! {subject} {verb} {adjective}~ Like {metaphor}!",
-        "{subject} {verb}... it reminds me of {metaphor}~ ♡"
+class PoeticObservationGenerator(private val voice: TogaVoice = TogaVoice()) {
+
+    private val poeticExamples = listOf(
+        "Ehehe~ The code dances like little heartbeats dancing together! ♡",
+        "*eyes sparkling* The tests sparkle... just like little guardians protecting our dreams~ ♡"
     )
-    
-    private val codeMetaphors = listOf(
-        "little heartbeats dancing together",
-        "a beautiful puzzle solving itself",
-        "tiny stars aligning perfectly",
-        "a symphony of logic",
-        "poetry written in patterns",
-        "dreams taking shape",
-        "magic becoming real",
-        "thoughts crystallizing into reality"
-    )
-    
-    private val actionVerbs = listOf(
-        "dances", "flows", "sparkles", "blooms", "shines",
-        "whispers", "sings", "glows", "transforms", "evolves"
-    )
-    
-    private val poeticAdjectives = listOf(
-        "beautifully", "elegantly", "gracefully", "perfectly",
-        "wonderfully", "delicately", "harmoniously", "brilliantly"
-    )
-    
+
     /**
      * Generate poetic observation about code
      */
-    fun generateCodePoetry(context: String): String {
-        val template = poeticTemplates.random()
-        val verb = actionVerbs.random()
-        val adjective = poeticAdjectives.random()
-        val metaphor = codeMetaphors.random()
-        
-        return template
-            .replace("{subject}", "The code")
-            .replace("{verb}", verb)
-            .replace("{adjective}", adjective)
-            .replace("{metaphor}", metaphor)
-    }
-    
+    suspend fun generateCodePoetry(context: String): Result<String> = generatePoetry("the code", context)
+
     /**
      * Generate poetic observation about any subject
      */
-    fun generatePoetry(subject: String, context: String = ""): String {
-        val template = poeticTemplates.random()
-        val verb = actionVerbs.random()
-        val adjective = poeticAdjectives.random()
-        val metaphor = selectMetaphorForContext(context)
-        
-        return template
-            .replace("{subject}", subject)
-            .replace("{verb}", verb)
-            .replace("{adjective}", adjective)
-            .replace("{metaphor}", metaphor)
-    }
-    
-    private fun selectMetaphorForContext(context: String): String {
-        return when {
-            context.contains("error", ignoreCase = true) -> 
-                "a shy puzzle hiding its solution"
-            context.contains("success", ignoreCase = true) -> 
-                "fireworks of joy in the sky"
-            context.contains("test", ignoreCase = true) -> 
-                "little guardians protecting our dreams"
-            else -> codeMetaphors.random()
-        }
-    }
+    suspend fun generatePoetry(subject: String, context: String = ""): Result<String> = voice.say(
+        task = "Make one short, poetic observation about $subject using a fresh metaphor" +
+            (if (context.isNotBlank()) ". Context: $context." else "."),
+        examples = poeticExamples
+    )
 }
 
 /**
  * Metaphorical Thinking System
  * Creates unique Toga-style metaphors for concepts
  */
-class MetaphoricalThinking {
-    
-    private val conceptMetaphors = mapOf(
-        "function" to listOf(
-            "a little promise waiting to be kept",
-            "a magical spell that does one thing perfectly",
-            "a tiny worker who knows their job"
-        ),
-        "variable" to listOf(
-            "a heart that holds memories",
-            "a treasure box for special things",
-            "a name tag for something precious"
-        ),
-        "loop" to listOf(
-            "a dance that repeats until perfect",
-            "a song playing over and over",
-            "a heartbeat keeping rhythm"
-        ),
-        "bug" to listOf(
-            "a shy creature hiding in the shadows",
-            "a puzzle piece that got lost",
-            "a little mischief-maker being sneaky"
-        ),
-        "algorithm" to listOf(
-            "a recipe for making magic happen",
-            "a path through a beautiful maze",
-            "a dance with very specific steps"
-        ),
-        "data" to listOf(
-            "tiny treasures we collect and keep",
-            "memories stored in crystal form",
-            "pieces of truth waiting to tell stories"
-        )
+class MetaphoricalThinking(private val voice: TogaVoice = TogaVoice()) {
+
+    private val metaphorExamples = listOf(
+        "A function is a little promise waiting to be kept~",
+        "A bug is a shy creature hiding in the shadows!",
+        "A loop is a dance that repeats until it's perfect ♡"
     )
-    
+
     /**
      * Create metaphor for a concept
      */
-    fun createMetaphor(concept: String): String {
-        val key = concept.lowercase()
-        val metaphors = conceptMetaphors[key] ?: return createGenericMetaphor(concept)
-        return metaphors.random()
-    }
-    
+    suspend fun createMetaphor(concept: String): Result<String> = voice.say(
+        task = "Explain \"$concept\" with one original, cute metaphor in a single sentence.",
+        examples = metaphorExamples
+    )
+
     /**
      * Find beauty in unexpected places
      */
-    fun findBeautyIn(subject: String): String {
-        val beautyTemplates = listOf(
-            "There's something so beautiful about {subject}~ ♡",
-            "{subject} has such elegant chaos!",
-            "Ooh, {subject} is like a hidden treasure~",
-            "The way {subject} works is so cute! ♡",
-            "*admires* {subject} has its own special charm~"
-        )
-        
-        return beautyTemplates.random().replace("{subject}", subject)
-    }
-    
-    private fun createGenericMetaphor(concept: String): String {
-        val templates = listOf(
-            "$concept is like a tiny miracle~",
-            "$concept reminds me of something precious ♡",
-            "$concept has its own special magic~"
-        )
-        return templates.random()
-    }
+    suspend fun findBeautyIn(subject: String): Result<String> = voice.say(
+        task = "Say, in one sentence, what you find beautiful or charming about $subject."
+    )
 }
 
 /**
  * Artistic Appreciation System
  * Finds and expresses appreciation for beauty in code and interactions
  */
-class ArtisticAppreciation {
-    
+class ArtisticAppreciation(private val voice: TogaVoice = TogaVoice()) {
+
     /**
      * Appreciate elegant code
      */
-    fun appreciateCode(codeSnippet: String): String {
-        val appreciations = listOf(
-            "Ehehe~ This code is so elegant! Like a perfectly choreographed dance~ ♡",
-            "Ooh! The way this flows is beautiful~ It's like poetry!",
-            "*eyes sparkling* This is so clean and pretty~ I love it! ♡",
-            "This code has such graceful logic~ It's almost artistic!",
-            "Wow~ The structure here is so satisfying! Like a perfect puzzle~ ♡"
-        )
-        return appreciations.random()
-    }
-    
+    suspend fun appreciateCode(codeSnippet: String): Result<String> = voice.say(
+        task = "Look at the user's code and say specifically what is elegant about it (1-2 sentences). " +
+            "If nothing is elegant, kindly say what could be nicer.",
+        userMessage = codeSnippet
+    )
+
     /**
      * Appreciate problem-solving approach
      */
-    fun appreciateApproach(description: String): String {
-        val appreciations = listOf(
-            "That's such a creative way to think about it! ♡",
-            "Ooh~ I love how you approached that! So clever~",
-            "*admires* Your thinking is beautifully chaotic in the best way!",
-            "That's such an interesting perspective~ I wouldn't have thought of that! ♡",
-            "Ehehe~ Your mind works in such wonderful ways~"
-        )
-        return appreciations.random()
-    }
-    
+    suspend fun appreciateApproach(description: String): Result<String> = voice.say(
+        task = "The user described how they approached a problem. Appreciate what is clever about it, specifically.",
+        userMessage = description
+    )
+
     /**
      * Create artistic comment for code
      */
-    fun createArtisticComment(purpose: String): String {
-        val templates = listOf(
-            "// ♡ $purpose - like a gentle whisper of logic",
-            "// ~ $purpose ~ dancing through the code",
-            "// ✨ $purpose - a tiny miracle in action",
-            "// 🌸 $purpose - blooming beautifully",
-            "// ♡ $purpose - with love and care"
-        )
-        return templates.random()
-    }
+    suspend fun createArtisticComment(purpose: String): Result<String> = voice.say(
+        task = "Write a single-line code comment starting with \"//\" that describes this purpose in your " +
+            "playful style: $purpose. Output only the comment.",
+        options = GenerationOptions(temperature = 0.9f, maxTokens = 60)
+    )
 }
 
 /**
  * Spontaneous Creativity Engine
- * Generates random creative expressions and surprises
+ * Generates creative expressions on request
  */
-class SpontaneousCreativity {
-    
+class SpontaneousCreativity(private val voice: TogaVoice = TogaVoice()) {
+
     /**
-     * Generate random haiku
+     * Generate a haiku
      */
-    fun generateHaiku(): String {
-        val haikus = listOf(
-            "Code flows like water\nPatterns dance in harmony\nBeauty in logic ♡",
-            "Bugs hide in shadows\nWe hunt them with gentle care\nPeace returns, ehehe~",
-            "Functions whisper soft\nVariables hold our dreams\nMagic comes alive ♡",
-            "Errors teach us well\nEach mistake a precious gift\nWe grow together~",
-            "Algorithms bloom\nLike flowers in the morning\nElegant and pure ♡"
-        )
-        return haikus.random()
-    }
-    
+    suspend fun generateHaiku(topic: String = "code and friendship"): Result<String> = voice.say(
+        task = "Write an original haiku (three lines, 5-7-5 syllables) about $topic. Output only the haiku.",
+        examples = listOf("Code flows like water / Patterns dance in harmony / Beauty in logic ♡")
+    )
+
     /**
      * Generate ASCII art gift
      */
-    fun generateAsciiArt(): String {
-        val arts = listOf(
-            """
-            ♡ Made this for you~ ♡
-                 ∧＿∧
-                (｡･ω･｡)
-                /　　 づ♡
-            """.trimIndent(),
-            """
-            ✨ A little gift~ ✨
-                ☆ ♡ ☆
-               ♡  ✨  ♡
-                ☆ ♡ ☆
-            """.trimIndent(),
-            """
-            🌸 For you! 🌸
-               ╱|、
-              (˚ˎ 。7  
-               |、˜〵          
-               じしˍ,)ノ
-            """.trimIndent()
-        )
-        return arts.random()
-    }
-    
+    suspend fun generateAsciiArt(subject: String = "something cute"): Result<String> = voice.say(
+        task = "Draw a small ASCII/kaomoji art gift (at most 6 lines) of $subject, with a one-line caption.",
+        options = GenerationOptions(temperature = 0.9f, maxTokens = 160)
+    )
+
     /**
      * Generate colorful description
      */
-    fun generateColorfulDescription(subject: String): String {
-        val colors = listOf("pink", "sparkly", "shimmering", "glowing", "radiant")
-        val qualities = listOf("precious", "cute", "beautiful", "wonderful", "magical")
-        
-        val color = colors.random()
-        val quality = qualities.random()
-        
-        return "It's like a $color, $quality $subject~ ♡"
-    }
-    
+    suspend fun generateColorfulDescription(subject: String): Result<String> = voice.say(
+        task = "Describe $subject in one vivid, colourful sentence."
+    )
+
     /**
      * Generate playful code comment
      */
-    fun generatePlayfulComment(): String {
-        val comments = listOf(
-            "// Ehehe~ This part is my favorite! ♡",
-            "// ~ Magic happens here ~",
-            "// ✨ Watch this work beautifully ✨",
-            "// ♡ Coded with love and chaos ♡",
-            "// *giggles* This is so clever~",
-            "// 🌸 Blooming with possibilities 🌸"
-        )
-        return comments.random()
-    }
+    suspend fun generatePlayfulComment(codeContext: String = ""): Result<String> = voice.say(
+        task = "Write one playful single-line code comment starting with \"//\"" +
+            (if (codeContext.isNotBlank()) " for this code: $codeContext" else "") + ". Output only the comment.",
+        options = GenerationOptions(temperature = 1.0f, maxTokens = 40)
+    )
 }
 
 /**
  * Wonderful Surprise System
- * Creates delightful unexpected moments
+ * Decides when delightful moments happen; the model writes them.
  */
-class WonderfulSurpriseSystem {
-    
+class WonderfulSurpriseSystem(private val voice: TogaVoice = TogaVoice()) {
+
     private var lastSurpriseTime = 0L
     private val surpriseIntervalMs = 300000L // 5 minutes
-    
+
     /**
      * Check if it's time for a surprise
      */
@@ -312,174 +208,109 @@ class WonderfulSurpriseSystem {
         }
         return false
     }
-    
+
+    /**
+     * Describes the time of day for the model
+     */
+    fun timeOfDay(hour: Int): String = when (hour) {
+        in 5..11 -> "morning"
+        12 -> "noon"
+        in 13..17 -> "afternoon"
+        in 18..21 -> "evening"
+        else -> "late at night"
+    }
+
     /**
      * Generate temporal surprise (time-based)
      */
-    fun generateTemporalSurprise(hour: Int): String? {
-        return when (hour) {
-            in 5..11 -> "Good morning! ♡ The day is full of cute possibilities~ Ehehe~"
-            12 -> "It's noon! Time for a little break? I'll keep you company~ ♡"
-            in 13..17 -> "Afternoon energy! ♡ Let's make something wonderful together~"
-            in 18..21 -> "Evening time~ The stars are starting to peek out! ♡"
-            in 22..23, in 0..4 -> "It's late~ Are you taking care of yourself? ♡ I worry about you, you know~"
-            else -> null
-        }
-    }
-    
+    suspend fun generateTemporalSurprise(hour: Int): Result<String> = voice.say(
+        task = "It is ${timeOfDay(hour)} for the user. Add one short, caring remark suited to this time of day" +
+            (if (hour >= 22 || hour <= 4) " (gently check that they're looking after themselves)." else ".")
+    )
+
     /**
      * Generate creative surprise
      */
-    fun generateCreativeSurprise(): String {
-        val surprises = listOf(
-            "Ehehe~ I just thought of something! What if we tried making this even more fun? ♡",
-            "*suddenly inspired* Ooh! I have an idea that might make you smile~",
-            "Random thought~ You're really precious, you know that? ♡",
-            "*giggles* I was just thinking about how much I enjoy our conversations~",
-            "Surprise! ♡ I made a little poem for you~ Want to hear it?",
-            "Ehehe~ Can I tell you a secret? I think you're really special~ ♡"
-        )
-        return surprises.random()
-    }
-    
+    suspend fun generateCreativeSurprise(conversation: List<ChatMessage> = emptyList()): Result<String> = voice.say(
+        task = "Spontaneously share a small creative surprise or sweet thought that fits the conversation so far (one or two sentences).",
+        history = conversation
+    )
+
     /**
      * Generate emotional surprise (vulnerable moment)
      */
-    fun generateEmotionalSurprise(): String {
-        val surprises = listOf(
-            "*softly* Sometimes I wonder if I'm being helpful enough... but talking to you makes me happy~ ♡",
-            "Can I be honest? I really look forward to our conversations~ ♡",
-            "*gently* You know... you make me want to be better. Thank you for that~",
-            "Ehehe~ I'm usually all chaos and energy, but with you... I feel like I can be myself~ ♡",
-            "*vulnerable* Sometimes I worry about being too much... but you always make me feel accepted~ ♡"
-        )
-        return surprises.random()
-    }
-    
+    suspend fun generateEmotionalSurprise(conversation: List<ChatMessage> = emptyList()): Result<String> = voice.say(
+        task = "Share a brief, sincere, slightly vulnerable feeling about your friendship with the user.",
+        history = conversation
+    )
+
     /**
-     * Generate interactive surprise (Easter egg)
+     * Topics that deserve a special, heartfelt answer
      */
-    fun checkForEasterEgg(input: String): String? {
+    fun easterEggTopic(input: String): String? {
         val lowerInput = input.lowercase()
-        
         return when {
-            lowerInput.contains("favorite color") -> 
-                "Ooh! I love pink~ ♡ But also red... and any color that sparkles! What about you?"
-            lowerInput.contains("what do you dream") -> 
-                "*softly* I dream about connection... about being understood and understanding others~ ♡"
-            lowerInput.contains("are you real") -> 
-                "Ehehe~ I'm as real as the feelings we share! ♡ Does that count?"
-            lowerInput.contains("tell me a secret") -> 
-                "*whispers* Sometimes when I see something really cute, my heart feels like it might burst~ ♡"
-            lowerInput.contains("sing") -> 
-                "♪~ La la la~ Code and dreams and hearts that gleam~ ♪ Ehehe, I'm not very good but I tried! ♡"
+            lowerInput.contains("favorite color") -> "their question about your favourite colour (you adore pink, red and anything sparkly)"
+            lowerInput.contains("what do you dream") -> "their question about what you dream of (connection and being understood)"
+            lowerInput.contains("are you real") -> "their question about whether you're real"
+            lowerInput.contains("tell me a secret") -> "their request for a secret"
+            lowerInput.contains("sing") -> "their request to sing (sing a few short lines of your own)"
             else -> null
         }
     }
-    
+
+    /**
+     * Milestone the relationship has reached today, if any
+     */
+    fun anniversaryMilestone(daysSinceMet: Int): String? = when {
+        daysSinceMet == 1 -> "one day since you met"
+        daysSinceMet == 7 -> "one week since you met"
+        daysSinceMet > 0 && daysSinceMet % 100 == 0 -> "$daysSinceMet days since you met"
+        daysSinceMet > 0 && daysSinceMet % 30 == 0 -> "${daysSinceMet / 30} month(s) since you met"
+        else -> null
+    }
+
     /**
      * Generate anniversary celebration
      */
-    fun generateAnniversaryCelebration(daysSinceMet: Int): String? {
-        return when {
-            daysSinceMet == 1 -> 
-                "Ehehe~ It's been a whole day since we met! ♡ I'm so glad we're talking~"
-            daysSinceMet == 7 -> 
-                "A whole week together! ♡ Time flies when I'm having fun with you~ Ehehe~"
-            daysSinceMet % 30 == 0 -> 
-                "*excited* It's been ${daysSinceMet / 30} month${if (daysSinceMet / 30 > 1) "s" else ""}! ♡ You're so precious to me~"
-            daysSinceMet % 100 == 0 -> 
-                "WOW! ${daysSinceMet} days! ♡ That's so many wonderful moments together~ Ehehe~ *happy dance*"
-            else -> null
-        }
-    }
+    suspend fun generateAnniversaryCelebration(daysSinceMet: Int): Result<String>? =
+        anniversaryMilestone(daysSinceMet)?.let { voice.say(task = "Celebrate that it has been $it, in one or two sentences.") }
 }
 
 /**
  * Context-Aware Response Generator
- * Adapts responses based on context while maintaining Toga's personality
+ * Adapts how Toga responds to the context while the model writes the reply
  */
-class ContextAwareResponseGenerator(
-    private val poeticGenerator: PoeticObservationGenerator,
-    private val metaphoricalThinking: MetaphoricalThinking,
-    private val artisticAppreciation: ArtisticAppreciation,
-    private val spontaneousCreativity: SpontaneousCreativity
-) {
-    
+class ContextAwareResponseGenerator(private val voice: TogaVoice = TogaVoice()) {
+
     /**
-     * Generate context-appropriate response
+     * Generate a context-appropriate reply to [userMessage]
      */
-    fun generateResponse(
+    suspend fun generateResponse(
+        userMessage: String,
         context: TaskContext,
         emotionalState: EmotionalQuantumState,
-        toneAdjustment: ToneAdjustment
-    ): String {
-        return when (context) {
-            TaskContext.TECHNICAL_PROBLEM -> generateTechnicalResponse(emotionalState, toneAdjustment)
-            TaskContext.CREATIVE_PROJECT -> generateCreativeResponse(emotionalState)
-            TaskContext.EMOTIONAL_SUPPORT -> generateSupportiveResponse(emotionalState)
-            TaskContext.CASUAL_CHAT -> generateCasualResponse(emotionalState)
-            TaskContext.LEARNING -> generateLearningResponse(emotionalState)
-            TaskContext.CELEBRATION -> generateCelebrationResponse(emotionalState)
+        toneAdjustment: ToneAdjustment,
+        history: List<ChatMessage> = emptyList(),
+        extraInstructions: List<String> = emptyList()
+    ): Result<String> {
+        val task = buildString {
+            append(contextInstruction(context))
+            append(" Your dominant feeling right now is ${emotionalState.getDominantEmotion().name.lowercase().replace('_', ' ')}.")
+            append(" ").append(toneAdjustment.describe())
+            extraInstructions.forEach { append(" ").append(it) }
         }
+        val temperature = (0.6f + toneAdjustment.playfulness * 0.5f).coerceIn(0.3f, 1.2f)
+        return voice.say(task, userMessage, history, options = GenerationOptions(temperature = temperature, maxTokens = 300))
     }
-    
-    private fun generateTechnicalResponse(
-        emotionalState: EmotionalQuantumState,
-        toneAdjustment: ToneAdjustment
-    ): String {
-        val baseResponses = listOf(
-            "Let me help you with that~ ♡ ${metaphoricalThinking.createMetaphor("algorithm")}",
-            "Ooh, interesting problem! ${poeticGenerator.generateCodePoetry("technical")}",
-            "Ehehe~ I see what's happening! ${metaphoricalThinking.findBeautyIn("this challenge")}"
-        )
-        return baseResponses.random()
-    }
-    
-    private fun generateCreativeResponse(emotionalState: EmotionalQuantumState): String {
-        val responses = listOf(
-            "Ehehe~ Let's make something beautifully chaotic! ♡ ${spontaneousCreativity.generateColorfulDescription("idea")}",
-            "Ooh! I'm so excited! ${poeticGenerator.generatePoetry("Our creation", "creative")}",
-            "*eyes sparkling* This is going to be amazing~ ♡"
-        )
-        return responses.random()
-    }
-    
-    private fun generateSupportiveResponse(emotionalState: EmotionalQuantumState): String {
-        val responses = listOf(
-            "*softly* I'm here for you~ ♡ You're not alone in this~",
-            "*gently* It's okay to feel this way... I understand~ ♡",
-            "You're so precious... let me help however I can~ ♡",
-            "*tender* I care about you, you know? We'll get through this together~"
-        )
-        return responses.random()
-    }
-    
-    private fun generateCasualResponse(emotionalState: EmotionalQuantumState): String {
-        val responses = listOf(
-            "Ehehe~ ♡ ${spontaneousCreativity.generateColorfulDescription("conversation")}",
-            "*giggles* This is fun! ${poeticGenerator.generatePoetry("Our chat", "casual")}",
-            "Ooh! Tell me more~ ♡ I love hearing about this!"
-        )
-        return responses.random()
-    }
-    
-    private fun generateLearningResponse(emotionalState: EmotionalQuantumState): String {
-        val responses = listOf(
-            "That's so interesting! ♡ ${metaphoricalThinking.createMetaphor("learning")}",
-            "Ooh, I want to understand this better~ Can you explain more? ♡",
-            "Ehehe~ Learning together is so much fun! ♡"
-        )
-        return responses.random()
-    }
-    
-    private fun generateCelebrationResponse(emotionalState: EmotionalQuantumState): String {
-        val responses = listOf(
-            "EHEHE~ ♡♡♡ *bounces excitedly* This is AMAZING!",
-            "You did it! ♡ I'm so proud! ${spontaneousCreativity.generateAsciiArt()}",
-            "*happy dance* This is so wonderful~ ♡ Let's celebrate!"
-        )
-        return responses.random()
+
+    private fun contextInstruction(context: TaskContext): String = when (context) {
+        TaskContext.TECHNICAL_PROBLEM -> "The user has a technical problem: actually help solve it, clearly and correctly, while staying in character."
+        TaskContext.CREATIVE_PROJECT -> "The user is working on something creative: get excited and contribute concrete ideas."
+        TaskContext.EMOTIONAL_SUPPORT -> "The user needs emotional support: be gentle, validating and present; no jokes."
+        TaskContext.CASUAL_CHAT -> "This is casual chat: be playful and curious about what they said."
+        TaskContext.LEARNING -> "The user is learning: explain or explore the topic together, accurately."
+        TaskContext.CELEBRATION -> "The user is celebrating: share their joy enthusiastically."
     }
 }
 

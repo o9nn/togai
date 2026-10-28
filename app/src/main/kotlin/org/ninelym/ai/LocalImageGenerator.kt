@@ -1,16 +1,23 @@
 package org.ninelym.ai
 
 import org.ninelym.cognitive.CognitiveTensor
+import org.ninelym.llm.LanguageModels
+import org.ninelym.llm.OpenAICompatibleModel
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Local Image Generator for on-device Stable Diffusion processing
- * Inspired by Layla AI's mobile-optimized image generation capabilities
+ * Image generator backed by a served Stable Diffusion model (an OpenAI-compatible
+ * `/images/generations` endpoint such as a local stable-diffusion.cpp / LocalAI server).
+ * [imageModels] maps this generator's model slots ("base", "anime", "artistic") to the model
+ * ids the server serves.
  */
-class LocalImageGenerator {
+class LocalImageGenerator(
+    private val endpointProvider: () -> Result<OpenAICompatibleModel> = { LanguageModels.currentEndpoint() },
+    private val imageModels: Map<String, String> = mapOf("base" to DEFAULT_IMAGE_MODEL)
+) {
     
     private val generationCache = ConcurrentHashMap<String, GeneratedImage>()
     private val modelCache = ConcurrentHashMap<String, StableDiffusionModel>()
@@ -40,7 +47,7 @@ class LocalImageGenerator {
     /**
      * Generate image from text prompt using local Stable Diffusion model
      */
-    fun generateImage(
+    suspend fun generateImage(
         prompt: String,
         style: ImageStyle = ImageStyle.DEFAULT,
         character: Character? = null
@@ -79,6 +86,9 @@ class LocalImageGenerator {
             
             val processingTime = System.currentTimeMillis() - startTime
             
+            generationTimes += processingTime
+            modelCache.computeIfPresent(slotOf(model)) { _, m -> m.copy(isLoaded = true) }
+            
             // Cache the result
             cacheGeneratedImage(cacheKey, generatedImage)
             
@@ -97,7 +107,7 @@ class LocalImageGenerator {
     /**
      * Generate multiple variations of an image
      */
-    fun generateVariations(
+    suspend fun generateVariations(
         basePrompt: String,
         variationCount: Int = 3,
         style: ImageStyle = ImageStyle.DEFAULT
@@ -117,7 +127,7 @@ class LocalImageGenerator {
     /**
      * Process image generation with different quality levels
      */
-    fun generateWithQuality(
+    suspend fun generateWithQuality(
         prompt: String,
         quality: QualityLevel,
         style: ImageStyle = ImageStyle.DEFAULT
@@ -168,56 +178,31 @@ class LocalImageGenerator {
     
     // Private implementation methods
     
+    private val generationTimes = java.util.concurrent.ConcurrentLinkedQueue<Long>()
+    
     private fun loadMobileOptimizedModels() {
-        // Load base mobile-optimized Stable Diffusion model
-        val baseModel = StableDiffusionModel(
-            id = "mobile-sd-base",
-            name = "Mobile Stable Diffusion Base",
-            version = "1.5-mobile",
-            fileSizeBytes = 1024L * 1024 * 1024, // 1GB mobile optimized
-            supportedStyles = listOf(
-                ImageStyle.DEFAULT,
-                ImageStyle.REALISTIC,
-                ImageStyle.ARTISTIC
-            ),
-            isLoaded = true,
-            optimizedForMobile = true
+        // One registry entry per configured served model; "loaded" once the server has produced an image with it
+        val slotStyles = mapOf(
+            "base" to listOf(ImageStyle.DEFAULT, ImageStyle.REALISTIC, ImageStyle.LANDSCAPE),
+            "anime" to listOf(ImageStyle.ANIME, ImageStyle.CHARACTER_FOCUSED, ImageStyle.FANTASY),
+            "artistic" to listOf(ImageStyle.ARTISTIC, ImageStyle.ABSTRACT, ImageStyle.VINTAGE)
         )
-        
-        // Load anime/character-focused model
-        val animeModel = StableDiffusionModel(
-            id = "mobile-sd-anime",
-            name = "Mobile Anime/Character Model",
-            version = "1.5-anime-mobile",
-            fileSizeBytes = 800L * 1024 * 1024, // 800MB
-            supportedStyles = listOf(
-                ImageStyle.ANIME,
-                ImageStyle.CHARACTER_FOCUSED,
-                ImageStyle.FANTASY
-            ),
-            isLoaded = true,
-            optimizedForMobile = true
-        )
-        
-        // Load artistic style model
-        val artisticModel = StableDiffusionModel(
-            id = "mobile-sd-artistic",
-            name = "Mobile Artistic Style Model",
-            version = "1.5-art-mobile",
-            fileSizeBytes = 900L * 1024 * 1024, // 900MB
-            supportedStyles = listOf(
-                ImageStyle.ARTISTIC,
-                ImageStyle.ABSTRACT,
-                ImageStyle.VINTAGE
-            ),
-            isLoaded = false, // Load on demand
-            optimizedForMobile = true
-        )
-        
-        modelCache["base"] = baseModel
-        modelCache["anime"] = animeModel
-        modelCache["artistic"] = artisticModel
+        require("base" in imageModels) { "imageModels must define a \"base\" model" }
+        imageModels.forEach { (slot, modelId) ->
+            modelCache[slot] = StableDiffusionModel(
+                id = modelId,
+                name = modelId,
+                version = "served",
+                fileSizeBytes = null,
+                supportedStyles = slotStyles[slot] ?: ImageStyle.values().toList(),
+                isLoaded = false,
+                optimizedForMobile = false
+            )
+        }
     }
+    
+    private fun slotOf(model: StableDiffusionModel): String =
+        modelCache.entries.first { it.value.id == model.id }.key
     
     private fun selectOptimalModel(style: ImageStyle, character: Character?): StableDiffusionModel {
         // Select model based on style preferences
@@ -297,14 +282,11 @@ class LocalImageGenerator {
         return "$stylePrompts, $qualityModifier"
     }
     
-    private fun runMobileInference(
+    private suspend fun runMobileInference(
         prompt: String,
         style: ImageStyle,
         model: StableDiffusionModel
     ): GeneratedImage {
-        
-        // Simulate mobile-optimized Stable Diffusion inference
-        // In a real implementation, this would run the actual model
         
         val imageSize = when (defaultImageSize) {
             ImageSize.SMALL -> Pair(256, 256)
@@ -313,7 +295,7 @@ class LocalImageGenerator {
             ImageSize.EXTRA_LARGE -> Pair(1024, 1024)
         }
         
-        // Simulate inference parameters optimized for mobile
+        // Steps/guidance are recorded for reference; the server applies its own sampler settings
         val inferenceParams = MobileInferenceParams(
             width = imageSize.first,
             height = imageSize.second,
@@ -329,8 +311,10 @@ class LocalImageGenerator {
             useMobileOptimizedScheduler = true
         )
         
-        // Generate image data (simulated)
-        val imageData = simulateImageGeneration(prompt, style, model, inferenceParams)
+        // The served model renders the image (PNG bytes)
+        val imageData = endpointProvider().getOrThrow()
+            .generateImage(prompt, "${inferenceParams.width}x${inferenceParams.height}", model.id)
+            .getOrThrow()
         
         return GeneratedImage(
             id = generateImageId(prompt, style),
@@ -343,26 +327,6 @@ class LocalImageGenerator {
             generatedAt = System.currentTimeMillis(),
             inferenceParams = inferenceParams
         )
-    }
-    
-    private fun simulateImageGeneration(
-        prompt: String,
-        style: ImageStyle,
-        model: StableDiffusionModel,
-        params: MobileInferenceParams
-    ): ByteArray {
-        // Simulate image generation by creating a placeholder image
-        // In a real implementation, this would run the actual Stable Diffusion model
-        
-        val imageSize = params.width * params.height * 3 // RGB
-        val imageData = ByteArray(imageSize) { index ->
-            // Create a simple pattern based on prompt hash and style
-            val promptHash = prompt.hashCode()
-            val styleHash = style.hashCode()
-            ((promptHash + styleHash + index) % 256).toByte()
-        }
-        
-        return imageData
     }
     
     private fun createPromptVariation(basePrompt: String, variationIndex: Int): String {
@@ -399,20 +363,17 @@ class LocalImageGenerator {
         generationCache[cacheKey] = image
     }
     
-    private fun calculateAverageGenerationTime(): Long {
-        // Simulate calculation - in real implementation would track actual times
-        return when (qualityLevel) {
-            QualityLevel.DRAFT -> 5000L
-            QualityLevel.BALANCED -> 15000L
-            QualityLevel.HIGH -> 30000L
-            QualityLevel.ULTRA -> 60000L
-        }
-    }
+    private fun calculateAverageGenerationTime(): Long =
+        if (generationTimes.isEmpty()) 0L else generationTimes.sum() / generationTimes.size
     
     private fun calculateMemoryUsage(): Long {
         val imageMemory = generationCache.values.sumOf { it.imageData.size }.toLong()
-        val modelMemory = modelCache.values.filter { it.isLoaded }.sumOf { it.fileSizeBytes }
+        val modelMemory = modelCache.values.filter { it.isLoaded }.sumOf { it.fileSizeBytes ?: 0L }
         return (imageMemory + modelMemory) / (1024 * 1024) // Convert to MB
+    }
+    
+    companion object {
+        const val DEFAULT_IMAGE_MODEL = "stable-diffusion"
     }
 }
 
@@ -422,7 +383,8 @@ data class StableDiffusionModel(
     val id: String,
     val name: String,
     val version: String,
-    val fileSizeBytes: Long,
+    /** Null for served models, whose size isn't known locally. */
+    val fileSizeBytes: Long?,
     val supportedStyles: List<ImageStyle>,
     val isLoaded: Boolean,
     val optimizedForMobile: Boolean

@@ -275,27 +275,31 @@ class QuantumEmotionalIntelligence {
     }
     
     /**
-     * Generate emotional expression based on current state
+     * Expression patterns that characterise the current state; style references for the model
      */
-    fun generateExpression(): String {
-        // Check for blends first
+    fun expressionReferences(): List<String> {
         val blend = detectBlend()
-        if (blend != null && currentState.coherence > 0.7f) {
-            return blend.expression
+        if (blend != null && currentState.coherence > 0.7f) return listOf(blend.expression)
+        val refs = mutableListOf(currentState.primaryEmotion.expressionPattern)
+        if (currentState.coherence > 0.6f) {
+            currentState.secondaryEmotions.maxByOrNull { it.intensity }
+                ?.takeIf { it.intensity > 0.4f }
+                ?.let { refs += it.emotion.expressionPattern }
         }
-        
-        // Use primary emotion expression
-        val baseExpression = currentState.primaryEmotion.expressionPattern
-        
-        // Add secondary emotion influence if coherent
-        if (currentState.coherence > 0.6f && currentState.secondaryEmotions.isNotEmpty()) {
-            val secondary = currentState.secondaryEmotions.maxByOrNull { it.intensity }
-            if (secondary != null && secondary.intensity > 0.4f) {
-                return blendExpressions(baseExpression, secondary.emotion.expressionPattern)
-            }
-        }
-        
-        return baseExpression
+        return refs
+    }
+    
+    /**
+     * Generate an emotional expression (a short emote) for the current state with the model
+     */
+    suspend fun generateExpression(voice: TogaVoice): Result<String> {
+        val feelings = (listOf(currentState.primaryEmotion) + currentState.secondaryEmotions.map { it.emotion })
+            .joinToString(", ") { it.name.lowercase().replace('_', ' ') }
+        return voice.say(
+            task = "Express how you feel right now ($feelings) as one short emote or exclamation, e.g. an action in asterisks. Output only that.",
+            examples = expressionReferences(),
+            options = org.ninelym.llm.GenerationOptions(temperature = 1.0f, maxTokens = 40)
+        )
     }
     
     /**
@@ -380,13 +384,6 @@ class QuantumEmotionalIntelligence {
         return (0.5f + (compatibleCount.toFloat() / secondary.size.toFloat()) * 0.5f).coerceIn(0.0f, 1.0f)
     }
     
-    /**
-     * Blend two expression patterns
-     */
-    private fun blendExpressions(expr1: String, expr2: String): String {
-        // Simple blending - combine elements
-        return "$expr1 $expr2"
-    }
     
     /**
      * Get current emotional state
@@ -455,7 +452,7 @@ class EmotionalContextDetector {
         }
         
         // Happy indicators
-        if (lowerMessage.contains(Regex("happy|joy|glad|pleased|great|good|:)|😊"))) {
+        if (lowerMessage.contains(Regex("happy|joy|glad|pleased|great|good|:\\)|😊"))) {
             return UserEmotionalState.HAPPY
         }
         
@@ -520,4 +517,10 @@ data class ToneAdjustment(
     val playfulness: Float,   // 0.0-1.0
     val gentleness: Float,    // 0.0-1.0
     val supportiveness: Float // 0.0-1.0
-)
+) {
+    /** Tone guidance for the model. */
+    fun describe(): String {
+        fun level(v: Float) = when { v >= 0.8f -> "very high"; v >= 0.6f -> "high"; v >= 0.4f -> "moderate"; else -> "low" }
+        return "Tone: energy ${level(energy)}, playfulness ${level(playfulness)}, gentleness ${level(gentleness)}, supportiveness ${level(supportiveness)}."
+    }
+}

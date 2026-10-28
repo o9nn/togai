@@ -4,8 +4,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.Serializable
+import org.ninelym.llm.ChatMessage
+import org.ninelym.llm.LanguageModel
+import org.ninelym.llm.LanguageModels
+import org.ninelym.llm.PersonaPrompt
 import org.ninelym.togai.util.ErrorHandler
-import kotlin.random.Random
 
 /**
  * Enhanced character personality engine for Togai
@@ -13,7 +16,8 @@ import kotlin.random.Random
  */
 class PersonalityEngine(
     private val characterId: String,
-    private val basePersonality: Personality
+    private val basePersonality: Personality,
+    private val modelProvider: () -> Result<LanguageModel> = { LanguageModels.current() }
 ) {
     
     companion object {
@@ -114,62 +118,67 @@ class PersonalityEngine(
     }
     
     /**
-     * Generate personality-influenced response
+     * Generate the character's reply with the language model, shaped by personality, current
+     * emotion and relationship. If [draft] is given, the model rewrites it in character.
      */
-    fun generateResponse(
+    suspend fun generateResponse(
         context: ResponseContext,
-        baseResponse: String
-    ): String {
-        val currentEmotion = _emotionalState.value
-        val relationship = _relationshipState.value
-        
-        // Apply personality traits
-        var response = applyPersonalityTraits(baseResponse)
-        
-        // Apply emotional influence
-        response = applyEmotionalInfluence(response, currentEmotion)
-        
-        // Apply relationship influence
-        response = applyRelationshipInfluence(response, relationship)
-        
-        // Add quirks occasionally
-        if (Random.nextFloat() < 0.2f) {
-            response = addQuirk(response)
+        draft: String? = null
+    ): Result<String> {
+        val model = modelProvider().getOrElse { return Result.failure(it) }
+        val history = context.conversationHistory.takeLast(10).mapIndexed { i, line ->
+            // History alternates user / character, ending with the character's last line
+            if ((context.conversationHistory.takeLast(10).size - i) % 2 == 0) ChatMessage.user(line) else ChatMessage.assistant(line)
         }
-        
-        return response
+        val task = buildString {
+            append(moodInstruction())
+            append(" It is ${context.timeOfDay}.")
+            context.userMood?.let { append(" The user seems $it.") }
+            context.taskType?.let { append(" The user is doing: $it.") }
+            draft?.let { append(" Base your reply on this content, rewritten entirely in your own voice: \"$it\"") }
+        }
+        return personaPrompt().respond(model, history + ChatMessage.user(context.userMessage), task)
     }
     
     /**
-     * Get personality-appropriate greeting
+     * Get a personality-appropriate greeting, written by the model
      */
-    fun getGreeting(timeOfDay: String = "day"): String {
-        val relationship = _relationshipState.value
+    suspend fun getGreeting(timeOfDay: String = "day"): Result<String> {
+        val model = modelProvider().getOrElse { return Result.failure(it) }
+        return personaPrompt().respond(
+            model,
+            "(The user just opened the app.)",
+            "Greet the user in one or two sentences. It is $timeOfDay. ${moodInstruction()}"
+        )
+    }
+    
+    /**
+     * The persona prompt for this character
+     */
+    fun personaPrompt(): PersonaPrompt = PersonaPrompt(
+        name = basePersonality.name,
+        description = basePersonality.description,
+        traits = basePersonality.traits,
+        styleHints = (basePersonality.speechPatterns + basePersonality.quirks).distinct()
+    )
+    
+    /**
+     * Current emotion and relationship expressed as guidance for the model
+     */
+    private fun moodInstruction(): String {
         val emotion = _emotionalState.value
-        
-        return when {
-            relationship.familiarity > 0.7f -> when (timeOfDay) {
-                "morning" -> "Good morning! Ready for another adventure?"
-                "afternoon" -> "Hey there! How's your day going?"
-                "evening" -> "Evening! Time to unwind?"
-                "night" -> "Still up? Let's chat!"
-                else -> "Hey! Great to see you again!"
-            }
-            relationship.familiarity > 0.3f -> when (timeOfDay) {
-                "morning" -> "Good morning!"
-                "afternoon" -> "Hello! How can I help?"
-                "evening" -> "Good evening!"
-                "night" -> "Hello! What brings you here?"
-                else -> "Hello! How can I assist you?"
-            }
-            else -> when (timeOfDay) {
-                "morning" -> "Good morning. I'm ${basePersonality.name}."
-                "afternoon" -> "Hello. I'm ${basePersonality.name}, your AI assistant."
-                "evening" -> "Good evening. How may I help you?"
-                "night" -> "Hello. What can I do for you?"
-                else -> "Hello. I'm ${basePersonality.name}. How can I assist you today?"
-            }
+        val relationship = _relationshipState.value
+        val expressiveness = basePersonality.emotionalRange.expressiveness
+        val familiarity = when {
+            relationship.familiarity > 0.7f -> "You know the user well; be warm and informal."
+            relationship.familiarity > 0.3f -> "You've talked a few times; be friendly."
+            else -> "You're still getting to know the user; be polite and introduce yourself if natural."
         }
+        val formality = basePersonality.traits["formality"]?.let { if (it < 0.3f) " Speak casually." else if (it > 0.7f) " Speak formally." else "" } ?: ""
+        val showEmotion = if (expressiveness >= 0.3f && emotion.intensity >= 0.3f) {
+            "You feel ${emotion.dominantEmotion} (intensity ${"%.1f".format(emotion.intensity)}); let it show."
+        } else "Keep emotions subtle."
+        return "$showEmotion $familiarity$formality"
     }
     
     /**
@@ -221,85 +230,6 @@ class PersonalityEngine(
             interactionCount = current.interactionCount + 1,
             lastInteraction = System.currentTimeMillis()
         )
-    }
-    
-    /**
-     * Apply personality traits to response
-     */
-    private fun applyPersonalityTraits(response: String): String {
-        val traits = basePersonality.traits
-        var modified = response
-        
-        // Apply speech patterns
-        if (basePersonality.speechPatterns.isNotEmpty() && Random.nextFloat() < 0.3f) {
-            val pattern = basePersonality.speechPatterns.random()
-            modified = "$pattern $modified"
-        }
-        
-        // Adjust formality based on traits
-        val formality = traits["formality"] ?: 0.5f
-        if (formality < 0.3f) {
-            // More casual
-            modified = modified.replace("I would", "I'd")
-                .replace("cannot", "can't")
-                .replace("do not", "don't")
-        }
-        
-        return modified
-    }
-    
-    /**
-     * Apply emotional influence to response
-     */
-    private fun applyEmotionalInfluence(
-        response: String,
-        emotion: EmotionalState
-    ): String {
-        val expressiveness = basePersonality.emotionalRange.expressiveness
-        
-        if (emotion.intensity < 0.3f || expressiveness < 0.3f) {
-            return response
-        }
-        
-        return when (emotion.dominantEmotion) {
-            "happy" -> "$response 😊"
-            "excited" -> "$response!"
-            "sad" -> response.replace("!", ".")
-            "concerned" -> "$response I hope everything is okay."
-            else -> response
-        }
-    }
-    
-    /**
-     * Apply relationship influence to response
-     */
-    private fun applyRelationshipInfluence(
-        response: String,
-        relationship: RelationshipState
-    ): String {
-        return when {
-            relationship.familiarity > 0.7f && relationship.affection > 0.6f -> {
-                // Very familiar and affectionate
-                response.replace("Hello", "Hey")
-                    .replace("Thank you", "Thanks")
-            }
-            relationship.trust < 0.3f -> {
-                // Low trust - more formal
-                response.replace("Hey", "Hello")
-                    .replace("Thanks", "Thank you")
-            }
-            else -> response
-        }
-    }
-    
-    /**
-     * Add a personality quirk to response
-     */
-    private fun addQuirk(response: String): String {
-        if (basePersonality.quirks.isEmpty()) return response
-        
-        val quirk = basePersonality.quirks.random()
-        return "$response $quirk"
     }
     
     /**
