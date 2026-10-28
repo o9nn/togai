@@ -1,6 +1,10 @@
 package org.ninelym.layla.tasker
 
 import org.ninelym.layla.inference.LaylaInferenceService
+import org.ninelym.llm.LanguageModel
+import org.ninelym.llm.LanguageModels
+import org.ninelym.llm.ask
+import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -9,9 +13,12 @@ import java.util.concurrent.ConcurrentHashMap
  * 
  * Provides Tasker integration for AI-powered automation workflows.
  */
-class TaskerPluginService {
-    
-    private val inferenceService = LaylaInferenceService()
+class TaskerPluginService(
+    private val inferenceService: LaylaInferenceService = LaylaInferenceService(),
+    private val modelProvider: () -> Result<LanguageModel> = { LanguageModels.current() },
+    private val outputDir: File = File(System.getProperty("java.io.tmpdir"))
+) {
+
     private val actions = ConcurrentHashMap<String, TaskerAction>()
     private val events = ConcurrentHashMap<String, TaskerEvent>()
     private val activeInferences = ConcurrentHashMap<String, InferenceTask>()
@@ -78,14 +85,12 @@ class TaskerPluginService {
             val fullPrompt = if (contextId != null) "Context: $contextId\n$prompt" else prompt
             val response = inferenceService.infer(fullPrompt).map { it.text }
             
-            activeInferences[taskId]?.let { it.copy(status = TaskStatus.COMPLETED) }
             activeInferences.remove(taskId)
             
             // Trigger completion event
-            triggerEvent("task_complete", mapOf(
-                "taskId" to taskId,
-                "result" to response.getOrNull().toString()
-            ))
+            response.onSuccess { text ->
+                triggerEvent("task_complete", mapOf("taskId" to taskId, "result" to text))
+            }
             
             response
         } catch (e: Exception) {
@@ -172,42 +177,55 @@ class TaskerPluginService {
     }
     
     private fun registerDefaultActions() {
-        // AI Inference Action
+        // AI Inference Action: the configured model answers the prompt
         actions["ai_inference"] = TaskerAction(
             id = "ai_inference",
             name = "AI Inference",
             description = "Perform AI inference with given prompt",
             parameters = listOf("prompt", "context"),
             execute = { params ->
-                val prompt = params["prompt"] ?: ""
-                val context = params["context"] ?: ""
-                // Execute inference
-                "Inference result for: $prompt"
+                val prompt = params["prompt"]?.takeIf { it.isNotBlank() }
+                    ?: throw IllegalArgumentException("prompt is required")
+                val context = params["context"].orEmpty()
+                val model = modelProvider().getOrThrow()
+                model.ask(
+                    "You are an automation assistant invoked from Tasker. Reply concisely with just the result." +
+                        if (context.isNotBlank()) "\nContext: $context" else "",
+                    prompt
+                ).getOrThrow()
             }
         )
         
-        // Text Processing Action
+        // Text Processing Action: the model applies the requested operation
         actions["process_text"] = TaskerAction(
             id = "process_text",
             name = "Process Text",
             description = "Process text with AI",
             parameters = listOf("text", "operation"),
             execute = { params ->
-                val text = params["text"] ?: ""
+                val text = params["text"]?.takeIf { it.isNotBlank() }
+                    ?: throw IllegalArgumentException("text is required")
                 val operation = params["operation"] ?: "summarize"
-                "Processed text: $operation applied to $text"
+                modelProvider().getOrThrow().ask(
+                    "Apply this operation to the user's text: $operation. Output only the result.",
+                    text
+                ).getOrThrow()
             }
         )
         
-        // Generate Image Action
+        // Generate Image Action: the served image model renders it; returns the file path
         actions["generate_image"] = TaskerAction(
             id = "generate_image",
             name = "Generate Image",
             description = "Generate image from text prompt",
             parameters = listOf("prompt", "style"),
             execute = { params ->
-                val prompt = params["prompt"] ?: ""
-                "Image generated for: $prompt"
+                val prompt = params["prompt"]?.takeIf { it.isNotBlank() }
+                    ?: throw IllegalArgumentException("prompt is required")
+                val style = params["style"]?.takeIf { it.isNotBlank() }
+                val bytes = LanguageModels.currentEndpoint().getOrThrow()
+                    .generateImage(if (style != null) "$prompt, in $style style" else prompt).getOrThrow()
+                File(outputDir, "tasker_image_${System.currentTimeMillis()}.png").apply { writeBytes(bytes) }.absolutePath
             }
         )
     }
@@ -241,7 +259,7 @@ data class TaskerAction(
     val name: String,
     val description: String,
     val parameters: List<String>,
-    val execute: (Map<String, String>) -> String
+    val execute: suspend (Map<String, String>) -> String
 )
 
 /**

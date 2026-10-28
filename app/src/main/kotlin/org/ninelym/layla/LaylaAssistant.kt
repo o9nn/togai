@@ -84,7 +84,7 @@ class LaylaAssistant {
     private val voiceInputService = VoiceInputService()
     private val voiceOutputService = VoiceOutputService()
     private val characterService = EnhancedCharacterService()
-    private val taskerService = TaskerPluginService()
+    private val taskerService = TaskerPluginService(inferenceService)
     private val calendarService = CalendarService()
     private val taskManagerService = EnhancedTaskManagerService()
     
@@ -92,7 +92,9 @@ class LaylaAssistant {
     private val documentService = DocumentProcessingService()
     private val billingService = BillingService()
     private val sharingService = SharingService()
-    private val advancedWorkflowService = AdvancedTaskerWorkflowService()
+    private val advancedWorkflowService = AdvancedTaskerWorkflowService(
+        notifier = { message -> notificationService.showSimpleNotification("Layla workflow", message, "task_completion") }
+    )
     private val cloudSyncService = CloudSyncService()
     
     // Phase 4 Polish & Scale services
@@ -797,7 +799,7 @@ suspend fun main() {
             val answerResult = docService.askQuestion(doc.id, "What is the main topic?")
             if (answerResult.isSuccess) {
                 val answer = answerResult.getOrThrow()
-                println("  ✅ Question answered (${answer.confidence * 100}% confidence)")
+                println("  ✅ Answer: ${answer.answer}")
             }
         }
         println()
