@@ -216,6 +216,8 @@ class CharacterProvenanceTest {
             orchestrator.initialize()
             val response = orchestrator.processMultimodal(MultimodalRequest(textInput = "Hello, Togai!"))
             assertTrue("a language reply appeared without a model: $response", Modality.LANGUAGE !in response.results)
+            assertTrue("the request must fail without a model, not report success: $response", !response.success)
+            assertTrue("the failure must say why: $response", response.error?.contains("language model") == true)
         }
     }
 
