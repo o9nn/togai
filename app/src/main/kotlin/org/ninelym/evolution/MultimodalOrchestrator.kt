@@ -191,13 +191,22 @@ class MultimodalOrchestrator(
                     }
                 }
                 
+                // A requested modality whose model isn't serving is a failure, never a silent success
+                val unavailable = buildList {
+                    if (request.textInput != null && !languageModelLoaded) add("no language model is serving")
+                    if (request.imagePrompt != null && !imageGeneratorLoaded) add("no image model is serving")
+                    if (request.audioInput != null && !speechProcessorLoaded) add("no speech model is serving")
+                    if (request.quantumProcessing && !quantumProcessorInitialized) add("the quantum processor is not initialized")
+                }
+
                 // Fuse multimodal results
                 val fusedResult = fuseMultimodalResults(results)
                 
                 MultimodalResponse(
                     results = results,
                     fusedResult = fusedResult,
-                    success = true,
+                    success = unavailable.isEmpty(),
+                    error = unavailable.takeIf { it.isNotEmpty() }?.joinToString("; "),
                     processingTimeMs = System.currentTimeMillis()
                 )
                 
