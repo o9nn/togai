@@ -463,7 +463,10 @@ object PersonaFactory {
         responseTemplates: List<String> = emptyList()
     ): PersonaSpec {
         return create(name) {
-            description("Migrated from legacy character system")
+            description(
+                "Migrated from legacy character system" +
+                    if (responseTemplates.isNotEmpty()) ". Voice: ${responseTemplates.joinToString("; ")}." else ""
+            )
 
             // Map common legacy trait names to new system
             personalityTraits.forEach { (traitName, value) ->
@@ -478,14 +481,6 @@ object PersonaFactory {
                 trait(traitName, category, value)
             }
 
-            // Convert response templates to speech patterns if present
-            if (responseTemplates.isNotEmpty()) {
-                speechPattern(
-                    name = "legacy_templates",
-                    prefixes = responseTemplates.take(3),
-                    probability = 0.3f
-                )
-            }
 
             metadata("migratedFromLegacy", true)
         }

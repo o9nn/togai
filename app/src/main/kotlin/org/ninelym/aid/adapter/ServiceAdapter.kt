@@ -146,6 +146,7 @@ fun createServiceAdapter(
 class LegacyCharacterAdapter(
     private val name: String,
     private val personalityTraits: Map<String, Float>,
+    /** Descriptions of the legacy character's voice (not lines to say). */
     private val responseTemplates: List<String> = emptyList(),
     private val emotionalResponses: Map<String, Float> = emptyMap(),
     modelProvider: () -> Result<LanguageModel> = { LanguageModels.current() }
@@ -249,11 +250,7 @@ object LegacyCharacterFactory {
                 "patience" to 0.9f,
                 "knowledge" to 0.85f
             ),
-            templates = listOf(
-                "I'd be happy to help with that!",
-                "Let me assist you.",
-                "Of course!"
-            )
+            templates = listOf("warm and eager to help", "polite, clear and reassuring")
         )
     }
 
@@ -269,11 +266,7 @@ object LegacyCharacterFactory {
                 "playfulness" to 0.8f,
                 "expressiveness" to 0.85f
             ),
-            templates = listOf(
-                "Ooh, that's interesting!",
-                "Let's explore this together!",
-                "How creative!"
-            )
+            templates = listOf("enthusiastic about ideas", "invites the user to explore together")
         )
     }
 
@@ -289,11 +282,7 @@ object LegacyCharacterFactory {
                 "analytical" to 0.9f,
                 "objectivity" to 0.85f
             ),
-            templates = listOf(
-                "Analyzing the data...",
-                "From a logical perspective,",
-                "The evidence suggests"
-            )
+            templates = listOf("measured and analytical", "frames answers in terms of evidence and logic")
         )
     }
 
@@ -311,11 +300,7 @@ object LegacyCharacterFactory {
                 "noActualHarm" to 1.0f,
                 "respectBoundaries" to 1.0f
             ),
-            templates = listOf(
-                "Ehehe~",
-                "Ooh!",
-                "How cute~"
-            )
+            templates = listOf("bubbly, giggling interjections", "delights in anything cute")
         )
     }
 }

@@ -20,57 +20,58 @@ import kotlin.random.Random
 enum class Emotion(
     val displayName: String,
     val description: String,
+    /** How this emotion shows in her speech; guidance for the model, not a line to say. */
     val expressionPattern: String
 ) {
     CHEERFUL_JOY(
         "Cheerful Joy",
         "Pure happiness and bubbly energy",
-        "Ehehe~ ♡"
+        "bubbly giggling and hearts"
     ),
     OBSESSIVE_FOCUS(
         "Obsessive Focus",
         "Intense concentration and fascination",
-        "So interesting... I can't look away~"
+        "rapt, trailing-off fascination with the subject"
     ),
     PLAYFUL_MISCHIEF(
         "Playful Mischief",
         "Childlike fun and playful energy",
-        "*giggles* Let's try something fun!"
+        "giggly invitations to play or try something silly"
     ),
     VULNERABLE_OPENNESS(
         "Vulnerable Openness",
         "Emotional honesty and gentle sharing",
-        "*softly* Can I tell you something...?"
+        "soft, hesitant confiding"
     ),
     CHAOTIC_EXCITEMENT(
         "Chaotic Excitement",
         "Unpredictable energy and enthusiasm",
-        "*bounces excitedly* This is amazing!"
+        "bouncy, exclamation-filled excitement"
     ),
     TENDER_AFFECTION(
         "Tender Affection",
         "Gentle caring and warmth",
-        "You're really precious to me~ ♡"
+        "warm, affectionate reassurance"
     ),
     CREATIVE_INSPIRATION(
         "Creative Inspiration",
         "Artistic flow and imaginative thinking",
-        "Ooh! I see something beautiful here~"
+        "delighted noticing of beauty and ideas"
     ),
     PROTECTIVE_CARE(
         "Protective Care",
         "Nurturing warmth and support",
-        "I'll take care of you~ ♡"
+        "gentle, protective promises of support"
     ),
     CURIOUS_WONDER(
         "Curious Wonder",
         "Fascination and desire to explore",
-        "What's this? Tell me more!"
+        "eager questions asking to hear more"
     ),
     MELANCHOLIC_BEAUTY(
         "Melancholic Beauty",
         "Bittersweet appreciation and depth",
-        "It's beautiful... even if it makes me a little sad~"
+        "wistful appreciation tinged with sadness"
     )
 }
 
@@ -135,6 +136,7 @@ enum class EmotionalBlend(
     val emotion2: Emotion,
     val blendName: String,
     val description: String,
+    /** How the blend shows in her speech; guidance for the model. */
     val expression: String
 ) {
     HONEST_JOY(
@@ -142,42 +144,42 @@ enum class EmotionalBlend(
         Emotion.VULNERABLE_OPENNESS,
         "Honest Joy",
         "Genuine happiness with emotional authenticity",
-        "I'm really happy~ Even though sometimes I feel lonely, this makes me smile! ♡"
+        "happiness admitted alongside a hint of loneliness"
     ),
     DEVOTED_CARE(
         Emotion.OBSESSIVE_FOCUS,
         Emotion.TENDER_AFFECTION,
         "Devoted Care",
         "Intense caring and attention to detail",
-        "I'll remember every little thing about you because you're so precious! ♡"
+        "devoted attention to small details about the user"
     ),
     INSPIRED_CHAOS(
         Emotion.CHAOTIC_EXCITEMENT,
         Emotion.CREATIVE_INSPIRATION,
         "Inspired Chaos",
         "Unpredictable creative energy",
-        "Let's make something beautifully chaotic together! ♡"
+        "wild, collaborative creative enthusiasm"
     ),
     PLAYFUL_WONDER(
         Emotion.PLAYFUL_MISCHIEF,
         Emotion.CURIOUS_WONDER,
         "Playful Wonder",
         "Childlike exploration and discovery",
-        "*giggles* This is so interesting! Let's explore more~"
+        "playful curiosity that wants to keep exploring"
     ),
     PROTECTIVE_VULNERABILITY(
         Emotion.PROTECTIVE_CARE,
         Emotion.VULNERABLE_OPENNESS,
         "Protective Vulnerability",
         "Caring while being emotionally open",
-        "I want to protect you... and I hope you'll protect my heart too~ ♡"
+        "protectiveness paired with open vulnerability"
     ),
     BITTERSWEET_AFFECTION(
         Emotion.MELANCHOLIC_BEAUTY,
         Emotion.TENDER_AFFECTION,
         "Bittersweet Affection",
         "Deep appreciation with emotional complexity",
-        "You're so precious... it almost hurts how much I care~ ♡"
+        "deep, slightly aching tenderness"
     )
 }
 
@@ -296,8 +298,8 @@ class QuantumEmotionalIntelligence {
         val feelings = (listOf(currentState.primaryEmotion) + currentState.secondaryEmotions.map { it.emotion })
             .joinToString(", ") { it.name.lowercase().replace('_', ' ') }
         return voice.say(
-            task = "Express how you feel right now ($feelings) as one short emote or exclamation, e.g. an action in asterisks. Output only that.",
-            examples = expressionReferences(),
+            task = "Express how you feel right now ($feelings) as one short emote or exclamation, e.g. an action " +
+                "in asterisks. It should come across as: ${expressionReferences().joinToString("; ")}. Output only that.",
             options = org.ninelym.llm.GenerationOptions(temperature = 1.0f, maxTokens = 40)
         )
     }

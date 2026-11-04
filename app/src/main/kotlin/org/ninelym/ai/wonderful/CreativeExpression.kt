@@ -17,8 +17,8 @@ import org.ninelym.llm.PersonaPrompt
  * - Spontaneous creativity
  * - Wonderful surprises
  *
- * Every line Toga says is written by the language model through [TogaVoice]. The phrase lists
- * below are style examples passed to the model, never output directly.
+ * Every line Toga says is written by the language model through [TogaVoice]; the style lists
+ * below describe her voice to the model.
  */
 
 /**
@@ -34,9 +34,9 @@ class TogaVoice(
             "flourishes like \"Ehehe~\", \"~\" and \"♡\".",
         traits = mapOf("cheerfulness" to 0.95f, "playfulness" to 0.9f, "creativity" to 0.9f, "empathy" to 0.85f),
         styleHints = listOf(
-            "Ehehe~ That's such a cute idea! ♡",
-            "*eyes sparkling* Ooh, tell me more~",
-            "*softly* I'm here for you, okay? ♡"
+            "giggles and little hearts when delighted",
+            "actions in asterisks such as sparkling eyes or bouncing",
+            "a soft, gentle register when the user is hurting"
         ),
         rules = listOf(
             "Never encourage harm and always respect the user's boundaries.",
@@ -46,7 +46,7 @@ class TogaVoice(
 
     /**
      * Have Toga say something for [task]. [userMessage] is what the user said, if anything;
-     * [examples] are extra style references for this kind of line.
+     * [examples] are extra style descriptions for this kind of line.
      */
     suspend fun say(
         task: String,
@@ -68,9 +68,9 @@ class TogaVoice(
  */
 class PoeticObservationGenerator(private val voice: TogaVoice = TogaVoice()) {
 
-    private val poeticExamples = listOf(
-        "Ehehe~ The code dances like little heartbeats dancing together! ♡",
-        "*eyes sparkling* The tests sparkle... just like little guardians protecting our dreams~ ♡"
+    private val poeticStyle = listOf(
+        "whimsical similes that compare technical things to living, tender things",
+        "light, musical phrasing"
     )
 
     /**
@@ -84,7 +84,7 @@ class PoeticObservationGenerator(private val voice: TogaVoice = TogaVoice()) {
     suspend fun generatePoetry(subject: String, context: String = ""): Result<String> = voice.say(
         task = "Make one short, poetic observation about $subject using a fresh metaphor" +
             (if (context.isNotBlank()) ". Context: $context." else "."),
-        examples = poeticExamples
+        examples = poeticStyle
     )
 }
 
@@ -94,10 +94,9 @@ class PoeticObservationGenerator(private val voice: TogaVoice = TogaVoice()) {
  */
 class MetaphoricalThinking(private val voice: TogaVoice = TogaVoice()) {
 
-    private val metaphorExamples = listOf(
-        "A function is a little promise waiting to be kept~",
-        "A bug is a shy creature hiding in the shadows!",
-        "A loop is a dance that repeats until it's perfect ♡"
+    private val metaphorStyle = listOf(
+        "personify the concept as something small, cute or alive",
+        "keep it to one vivid image"
     )
 
     /**
@@ -105,7 +104,7 @@ class MetaphoricalThinking(private val voice: TogaVoice = TogaVoice()) {
      */
     suspend fun createMetaphor(concept: String): Result<String> = voice.say(
         task = "Explain \"$concept\" with one original, cute metaphor in a single sentence.",
-        examples = metaphorExamples
+        examples = metaphorStyle
     )
 
     /**
@@ -159,8 +158,7 @@ class SpontaneousCreativity(private val voice: TogaVoice = TogaVoice()) {
      * Generate a haiku
      */
     suspend fun generateHaiku(topic: String = "code and friendship"): Result<String> = voice.say(
-        task = "Write an original haiku (three lines, 5-7-5 syllables) about $topic. Output only the haiku.",
-        examples = listOf("Code flows like water / Patterns dance in harmony / Beauty in logic ♡")
+        task = "Write an original haiku (three lines, 5-7-5 syllables) about $topic. Output only the haiku."
     )
 
     /**

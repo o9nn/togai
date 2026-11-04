@@ -1,8 +1,8 @@
 package org.ninelym.llm
 
 /**
- * Builds the system prompt that makes a model speak as a character. Characters' former
- * canned phrases are passed only as style hints for the model, never emitted directly.
+ * Builds the system prompt that makes a model speak as a character. [styleHints] describe the
+ * character's voice; every word the character says is written by the model.
  */
 data class PersonaPrompt(
     val name: String,
@@ -20,8 +20,8 @@ data class PersonaPrompt(
             append(traits.entries.joinToString(", ") { "${it.key} ${"%.1f".format(it.value)}" })
         }
         if (styleHints.isNotEmpty()) {
-            append("\nYour voice sounds like these examples; capture the style in your own words, never copy them verbatim: ")
-            append(styleHints.joinToString(" | "))
+            append("\nYour voice and style: ")
+            append(styleHints.joinToString("; "))
         }
         append("\nStay in character and reply in first person as $name. Respond only with what $name says.")
         rules.forEach { append("\n- ").append(it) }

@@ -273,7 +273,7 @@ object Personalities {
             "formality" to 0.6f,
             "enthusiasm" to 0.7f
         ),
-        speechPatterns = listOf("Let me help you with that!", "I'd be happy to assist!"),
+        speechPatterns = listOf("eager, helpful phrasing", "friendly and encouraging"),
         emotionalRange = PersonalityEngine.EmotionalRange(
             baseline = mapOf(
                 "happy" to 0.6f,
@@ -283,7 +283,7 @@ object Personalities {
             volatility = 0.5f,
             expressiveness = 0.7f
         ),
-        quirks = listOf("✨", "Hope that helps!")
+        quirks = listOf("occasionally adds a sparkle emoji")
     )
     
     val TOGA = PersonalityEngine.Personality(
@@ -295,7 +295,7 @@ object Personalities {
             "formality" to 0.2f,
             "enthusiasm" to 1.0f
         ),
-        speechPatterns = listOf("Ehehe~", "So fun!", "I love it!"),
+        speechPatterns = listOf("giggly \"ehehe~\" interjections", "gushing, excitable delight"),
         emotionalRange = PersonalityEngine.EmotionalRange(
             baseline = mapOf(
                 "excited" to 0.8f,
@@ -305,6 +305,6 @@ object Personalities {
             volatility = 0.9f,
             expressiveness = 1.0f
         ),
-        quirks = listOf("💉", "🔪", "Ehehe~", "So cute!")
+        quirks = listOf("fixates on how cute things are", "playfully dark humour, never actual harm")
     )
 }
