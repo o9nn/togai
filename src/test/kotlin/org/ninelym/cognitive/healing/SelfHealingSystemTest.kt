@@ -15,7 +15,7 @@ import kotlin.test.assertNull
 class SelfHealingSystemTest {
 
     @Test
-    fun `test component registration`() = runBlocking {
+    fun `test component registration`(): Unit = runBlocking {
         val system = SelfHealingSystem()
 
         system.registerComponent("comp1", "TestComponent")
@@ -29,7 +29,7 @@ class SelfHealingSystemTest {
     }
 
     @Test
-    fun `test multiple component registration`() = runBlocking {
+    fun `test multiple component registration`(): Unit = runBlocking {
         val system = SelfHealingSystem()
 
         system.registerComponent("comp1", "Component1")
@@ -41,7 +41,7 @@ class SelfHealingSystemTest {
     }
 
     @Test
-    fun `test metric reporting`() = runBlocking {
+    fun `test metric reporting`(): Unit = runBlocking {
         val system = SelfHealingSystem()
         system.registerComponent("comp1", "TestComponent")
 
@@ -56,7 +56,7 @@ class SelfHealingSystemTest {
     }
 
     @Test
-    fun `test health check reporting`() = runBlocking {
+    fun `test health check reporting`(): Unit = runBlocking {
         val system = SelfHealingSystem()
         system.registerComponent("comp1", "TestComponent")
 
@@ -70,7 +70,7 @@ class SelfHealingSystemTest {
     }
 
     @Test
-    fun `test health status transitions`() = runBlocking {
+    fun `test health status transitions`(): Unit = runBlocking {
         val system = SelfHealingSystem()
         system.registerComponent("comp1", "TestComponent")
 
@@ -96,7 +96,7 @@ class SelfHealingSystemTest {
     }
 
     @Test
-    fun `test circuit breaker initial state`() = runBlocking {
+    fun `test circuit breaker initial state`(): Unit = runBlocking {
         val system = SelfHealingSystem()
         system.registerComponent("comp1", "TestComponent")
 
@@ -104,7 +104,7 @@ class SelfHealingSystemTest {
     }
 
     @Test
-    fun `test circuit breaker opens after failures`() = runBlocking {
+    fun `test circuit breaker opens after failures`(): Unit = runBlocking {
         val config = SelfHealingSystem.HealingConfig(
             circuitBreakerThreshold = 3
         )
@@ -121,7 +121,7 @@ class SelfHealingSystemTest {
     }
 
     @Test
-    fun `test circuit breaker success reporting`() = runBlocking {
+    fun `test circuit breaker success reporting`(): Unit = runBlocking {
         val system = SelfHealingSystem()
         system.registerComponent("comp1", "TestComponent")
 
@@ -138,7 +138,7 @@ class SelfHealingSystemTest {
     }
 
     @Test
-    fun `test recovery action creation`() = runBlocking {
+    fun `test recovery action creation`(): Unit = runBlocking {
         val system = SelfHealingSystem()
         system.registerComponent("comp1", "TestComponent")
 
@@ -155,7 +155,7 @@ class SelfHealingSystemTest {
     }
 
     @Test
-    fun `test max recovery attempts limit`() = runBlocking {
+    fun `test max recovery attempts limit`(): Unit = runBlocking {
         val config = SelfHealingSystem.HealingConfig(
             maxRecoveryAttempts = 2
         )
@@ -177,7 +177,7 @@ class SelfHealingSystemTest {
     }
 
     @Test
-    fun `test checkpoint creation`() = runBlocking {
+    fun `test checkpoint creation`(): Unit = runBlocking {
         val system = SelfHealingSystem()
         system.registerComponent("comp1", "TestComponent")
 
@@ -191,7 +191,7 @@ class SelfHealingSystemTest {
     }
 
     @Test
-    fun `test checkpoint retrieval`() = runBlocking {
+    fun `test checkpoint retrieval`(): Unit = runBlocking {
         val system = SelfHealingSystem()
         system.registerComponent("comp1", "TestComponent")
 
@@ -204,7 +204,7 @@ class SelfHealingSystemTest {
     }
 
     @Test
-    fun `test rollback to checkpoint`() = runBlocking {
+    fun `test rollback to checkpoint`(): Unit = runBlocking {
         val system = SelfHealingSystem()
         system.registerComponent("comp1", "TestComponent")
 
@@ -222,7 +222,7 @@ class SelfHealingSystemTest {
     }
 
     @Test
-    fun `test system health report`() = runBlocking {
+    fun `test system health report`(): Unit = runBlocking {
         val system = SelfHealingSystem()
 
         system.registerComponent("comp1", "Component1")
@@ -243,7 +243,7 @@ class SelfHealingSystemTest {
     }
 
     @Test
-    fun `test recent anomalies retrieval`() = runBlocking {
+    fun `test recent anomalies retrieval`(): Unit = runBlocking {
         val system = SelfHealingSystem()
         system.registerComponent("comp1", "TestComponent")
 
@@ -262,7 +262,7 @@ class SelfHealingSystemTest {
 
     @Test
     fun `test metric history`() {
-        val history = SelfHealingSystem.ComponentHealth.MetricHistory("test", maxSize = 10)
+        val history = SelfHealingSystem.MetricHistory("test", maxSize = 10)
 
         // Add values
         repeat(15) { i ->
@@ -287,7 +287,7 @@ class SelfHealingSystemTest {
 
     @Test
     fun `test anomaly detection in metric history`() {
-        val history = SelfHealingSystem.ComponentHealth.MetricHistory("test")
+        val history = SelfHealingSystem.MetricHistory("test")
 
         // Add consistent values
         repeat(20) {
@@ -302,7 +302,7 @@ class SelfHealingSystemTest {
         assertTrue(!history.isAnomaly(100f, 2.5f))
 
         // Add some variance
-        val historyWithVariance = SelfHealingSystem.ComponentHealth.MetricHistory("test2")
+        val historyWithVariance = SelfHealingSystem.MetricHistory("test2")
         repeat(10) { i ->
             historyWithVariance.add(50f + (i % 2) * 2f) // 50, 52, 50, 52...
         }
@@ -389,7 +389,7 @@ class SelfHealingSystemTest {
     }
 
     @Test
-    fun `test system reset`() = runBlocking {
+    fun `test system reset`(): Unit = runBlocking {
         val system = SelfHealingSystem()
 
         system.registerComponent("comp1", "Component1")

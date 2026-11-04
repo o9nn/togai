@@ -260,7 +260,7 @@ class CausalReasoningEngine(
         
         intervention.keys.forEach { interventionNode ->
             // Remove all edges pointing to this node
-            newEdges.keys.forEach { cause ->
+            newEdges.keys.toList().forEach { cause ->
                 newEdges[cause]?.let { effects ->
                     val filtered = effects.filter { it != interventionNode }.toSet()
                     if (filtered.isNotEmpty()) {

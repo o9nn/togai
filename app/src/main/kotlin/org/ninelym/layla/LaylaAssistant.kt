@@ -84,15 +84,17 @@ class LaylaAssistant {
     private val voiceInputService = VoiceInputService()
     private val voiceOutputService = VoiceOutputService()
     private val characterService = EnhancedCharacterService()
-    private val taskerService = TaskerPluginService()
+    private val taskerService = TaskerPluginService(inferenceService)
     private val calendarService = CalendarService()
     private val taskManagerService = EnhancedTaskManagerService()
     
     // Phase 3 Integration services
     private val documentService = DocumentProcessingService()
     private val billingService = BillingService()
-    private val sharingService = SharingService()
-    private val advancedWorkflowService = AdvancedTaskerWorkflowService()
+    private val sharingService = SharingService(conversations = { chatService.getConversation(it) })
+    private val advancedWorkflowService = AdvancedTaskerWorkflowService(
+        notifier = { message -> notificationService.showSimpleNotification("Layla workflow", message, "task_completion") }
+    )
     private val cloudSyncService = CloudSyncService()
     
     // Phase 4 Polish & Scale services
@@ -222,7 +224,10 @@ class LaylaAssistant {
             
             // Initialize Billing service
             println("  → Initializing billing service...")
-            billingService.initialize().getOrThrow()
+            // Billing is optional: report whether Google Play Billing is actually available
+            billingService.initialize()
+                .onSuccess { println("    billing connected") }
+                .onFailure { println("    billing unavailable: ${it.message}") }
             
             // Initialize Sharing service
             println("  → Initializing sharing service...")
@@ -334,6 +339,12 @@ class LaylaAssistant {
     }
     
     /**
+     * Ask Layla directly and get the model's reply text
+     */
+    suspend fun reply(message: String): Result<String> =
+        inferenceService.infer(message).map { it.text }
+    
+    /**
      * Remember text (text processing feature)
      */
     suspend fun rememberText(text: String, source: String? = null): Result<String> {
@@ -365,7 +376,7 @@ class LaylaAssistant {
         val result = authService.signIn(email, password)
         return if (result.isSuccess) {
             val user = result.getOrThrow()
-            Result.success("Welcome, ${user.name}!")
+            Result.success("Signed in as ${user.email}")
         } else {
             Result.failure(result.exceptionOrNull() ?: Exception("Sign in failed"))
         }
@@ -543,9 +554,13 @@ suspend fun main() {
         println("📋 Phase 2: Authentication Demo")
         println("─".repeat(60))
         println("  Signing in user...")
+        // Local accounts: create one if it doesn't exist yet, then sign in
+        layla.getAuthService().signUp("john.doe@example.com", "password123", "John Doe")
         val signInResult = layla.signIn("john.doe@example.com", "password123")
         if (signInResult.isSuccess) {
             println("  ✅ ${signInResult.getOrThrow()}")
+        } else {
+            println("  ❌ Sign in failed: ${signInResult.exceptionOrNull()?.message}")
         }
         println()
         
@@ -554,16 +569,18 @@ suspend fun main() {
         println("─".repeat(60))
         println("  Starting new conversation...")
         val conversationId = layla.startChat("Hello Layla! Can you help me understand quantum computing?")
-        println("  ✅ Conversation started: $conversationId")
-        
-        // Wait for AI response
-        delay(2000)
+        println("  Conversation: $conversationId")
         
         println("  Sending follow-up message...")
-        layla.sendMessage("What are qubits?")
-        delay(1500)
+        layla.getChatService().setActiveConversation(conversationId)
+        val followUp = layla.sendMessage("What are qubits?")
         
-        println("  ✅ Chat conversation completed")
+        // Show what the model actually said (or why it couldn't)
+        layla.getChatService().getConversation(conversationId)?.messages?.forEach { msg ->
+            val text = if (msg.error != null) "❌ ${msg.error}" else msg.content
+            println("  ${msg.role.name.lowercase()}: $text")
+        }
+        println(if (followUp.isSuccess) "  ✅ Chat conversation completed" else "  ❌ Chat failed: ${followUp.exceptionOrNull()?.message}")
         println()
         
         // Phase 4: Text Processing Demo
@@ -597,26 +614,24 @@ suspend fun main() {
         val notificationService = layla.getNotificationService()
         
         println("  Showing AI response notification...")
-        notificationService.showAIResponseNotification(
-            query = "What is quantum computing?",
-            response = "Quantum computing is a type of computation that harnesses quantum mechanics..."
-        )
-        println("  ✅ Notification displayed")
-        
-        println()
-        println("  Showing task completion notification...")
-        notificationService.showTaskCompletionNotification(
-            taskName = "Document Analysis",
-            result = "Successfully analyzed 10 documents"
-        )
-        println("  ✅ Notification displayed")
+        val question = "What is quantum computing?"
+        layla.reply(question).onSuccess { answer ->
+            notificationService.showAIResponseNotification(query = question, response = answer)
+                .onSuccess { println("  ✅ Notification with the model's answer: ${answer.take(80)}") }
+                .onFailure { println("  ❌ Notification failed: ${it.message}") }
+        }.onFailure { println("  ❌ Model reply failed: ${it.message}") }
         println()
         
-        // Phase 6: File Access Demo (stub)
+        // Phase 6: File Access Demo
         println("📋 Phase 6: File Access Demo")
         println("─".repeat(60))
-        println("  File access service initialized")
-        println("  ✅ Permissions: READ_MEDIA_IMAGES, POST_NOTIFICATIONS granted")
+        val fileAccess = layla.getFileAccessService()
+        listOf(
+            org.ninelym.layla.file.Permission.READ_MEDIA_IMAGES,
+            org.ninelym.layla.file.Permission.POST_NOTIFICATIONS
+        ).forEach { permission ->
+            println("  ${permission.name}: ${if (fileAccess.isPermissionGranted(permission)) "granted" else "not granted"}")
+        }
         println()
         
         // ===== PHASE 2 ENHANCEMENT DEMOS =====
@@ -651,12 +666,18 @@ suspend fun main() {
             delay(1000)
             val transcript = voiceInput.stopRecording(recordSession.getOrThrow())
             if (transcript.isSuccess) {
-                println("  ✅ Transcribed: \"${transcript.getOrThrow().text}\"")
+                val heard = transcript.getOrThrow().text
+                println("  ✅ Transcribed: \"$heard\"")
                 
-                // Test TTS
-                println("  Speaking response...")
-                voiceOutput.speak("Hello! I understood your voice input perfectly.")
-                println("  ✅ Voice output completed")
+                // Speak Layla's model-generated reply to what was heard
+                layla.reply(heard).onSuccess { answer ->
+                    println("  Speaking response: $answer")
+                    voiceOutput.speak(answer)
+                        .onSuccess { println("  ✅ Voice output completed") }
+                        .onFailure { println("  ❌ Voice output failed: ${it.message}") }
+                }.onFailure { println("  ❌ Model reply failed: ${it.message}") }
+            } else {
+                println("  ❌ Transcription failed: ${transcript.exceptionOrNull()?.message}")
             }
         }
         println()
@@ -669,11 +690,15 @@ suspend fun main() {
         
         println("  Setting active character...")
         characterService.setActiveCharacter("creative")
-        println("  ✅ Active character: Aria (Creative Companion)")
+            .onSuccess { println("  ✅ Active character: ${characterService.getActiveCharacter()}") }
+            .onFailure { println("  ❌ Could not set character: ${it.message}") }
         
-        println("  Setting character expression...")
-        characterService.setExpression("creative", org.ninelym.layla.character.Expression.HAPPY)
-        println("  ✅ Expression set to HAPPY")
+        println("  Syncing expression with a model-generated line...")
+        layla.reply("Say one excited sentence about painting.").onSuccess { line ->
+            characterService.syncWithSpeech("creative", line)
+                .onSuccess { println("  ✅ \"$line\" -> expression chosen by the model") }
+                .onFailure { println("  ❌ Expression sync failed: ${it.message}") }
+        }.onFailure { println("  ❌ Model reply failed: ${it.message}") }
         
         println("  Available characters:")
         characterService.getAvailableCharacters().forEach { char ->
@@ -782,7 +807,7 @@ suspend fun main() {
             val answerResult = docService.askQuestion(doc.id, "What is the main topic?")
             if (answerResult.isSuccess) {
                 val answer = answerResult.getOrThrow()
-                println("  ✅ Question answered (${answer.confidence * 100}% confidence)")
+                println("  ✅ Answer: ${answer.answer}")
             }
         }
         println()
@@ -1002,66 +1027,8 @@ suspend fun main() {
         println()
         
         
-        // Summary
-        println("╔════════════════════════════════════════════════════════════════╗")
-        println("║                    Demo Summary                               ║")
-        println("╠════════════════════════════════════════════════════════════════╣")
-        println("║  ✅ Phase 1 Foundation Successfully Implemented:              ║")
-        println("║                                                                ║")
-        println("║  1. ✅ AI Inference Service - LLaMA.cpp integration ready     ║")
-        println("║  2. ✅ Chat Service - Multi-turn conversations working        ║")
-        println("║  3. ✅ Text Processing - Remember & Chat with text ready      ║")
-        println("║  4. ✅ File Access - Permission management functional         ║")
-        println("║  5. ✅ Authentication - Secure auth with token storage        ║")
-        println("║  6. ✅ Notifications - Advanced notification system ready     ║")
-        println("║                                                                ║")
-        println("║  ✅ Phase 2 Enhancement Successfully Implemented:             ║")
-        println("║                                                                ║")
-        println("║  1. ✅ Stable Diffusion - Image generation working            ║")
-        println("║  2. ✅ Voice I/O - Speech-to-text & text-to-speech ready      ║")
-        println("║  3. ✅ Enhanced Characters - Live2D animation framework       ║")
-        println("║  4. ✅ Tasker Plugin - Automation integration functional      ║")
-        println("║  5. ✅ Calendar - AI-powered event management ready           ║")
-        println("║  6. ✅ Task Manager - Background task automation working      ║")
-        println("║                                                                ║")
-        println("║  ✅ Phase 3 Integration Successfully Implemented:             ║")
-        println("║                                                                ║")
-        println("║  1. ✅ Document Processing - PDF, summarization, Q&A          ║")
-        println("║  2. ✅ Billing System - Google Play integration ready         ║")
-        println("║  3. ✅ Advanced Sharing - Multi-format export & sharing       ║")
-        println("║  4. ✅ AI Workflows - Decision trees & orchestration          ║")
-        println("║  5. ✅ Cloud Sync - Privacy-preserving sync (optional)        ║")
-        println("║                                                                ║")
-        println("║  ✅ Phase 4 Polish & Scale Successfully Implemented:          ║")
-        println("║                                                                ║")
-        println("║  1. ✅ Responsive UI - Adaptive layouts & accessibility       ║")
-        println("║  2. ✅ Performance - Memory, battery, network optimization    ║")
-        println("║  3. ✅ Privacy - Dashboard, audit, differential privacy       ║")
-        println("║  4. ✅ Analytics - Privacy-respecting monitoring system       ║")
-        println("║                                                                ║")
-        println("║  Architecture Highlights:                                     ║")
-        println("║  • Privacy-first: All AI processing on-device                 ║")
-        println("║  • Multi-modal: Text, voice, and image generation             ║")
-        println("║  • Modular design: Clean separation of concerns               ║")
-        println("║  • Kotlin coroutines: Async operations throughout             ║")
-        println("║  • State management: Flow-based reactive architecture         ║")
-        println("║  • Character-driven: Personality engine with Live2D           ║")
-        println("║  • Automation-ready: Tasker plugin & background tasks         ║")
-        println("║  • Document-aware: PDF processing & AI summarization          ║")
-        println("║  • Monetization-ready: Google Play Billing integration        ║")
-        println("║  • Share-friendly: Multi-format export & cloud storage        ║")
-        println("║  • Responsive: Adaptive layouts for all screen sizes          ║")
-        println("║  • Performance-optimized: Memory, battery, network efficient  ║")
-        println("║  • Privacy-enhanced: Audit, dashboard, differential privacy   ║")
-        println("║  • Analytics-ready: Privacy-respecting monitoring system      ║")
-        println("║                                                                ║")
-        println("║  Total Implementation:                                        ║")
-        println("║  • 21 core services (6 Ph1 + 6 Ph2 + 5 Ph3 + 4 Ph4)          ║")
-        println("║  • ~14,700+ lines of production code                          ║")
-        println("║  • Comprehensive test coverage                                ║")
-        println("║                                                                ║")
-        println("║  🎉 All 4 Phases Complete! Ready for production deployment!   ║")
-        println("╚════════════════════════════════════════════════════════════════╝")
+        // Each step above reports its own outcome; nothing here claims success it didn't observe
+        println("Demo finished. See the ✅/❌ lines above for what actually worked in this environment.")
         
     } catch (e: Exception) {
         println("❌ Demo failed: ${e.message}")

@@ -3,6 +3,10 @@ package org.ninelym.layla.tasker
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import org.ninelym.llm.GenerationOptions
+import org.ninelym.llm.LanguageModel
+import org.ninelym.llm.LanguageModels
+import org.ninelym.llm.ask
 
 /**
  * Advanced Tasker Workflows Service
@@ -20,7 +24,11 @@ import kotlinx.coroutines.flow.asStateFlow
  * 
  * Phase 3: Integration
  */
-class AdvancedTaskerWorkflowService {
+class AdvancedTaskerWorkflowService(
+    private val modelProvider: () -> Result<LanguageModel> = { LanguageModels.current() },
+    /** Delivers SendNotification steps; returns the notification id. */
+    private val notifier: (suspend (message: String) -> Result<String>)? = null
+) {
     
     // State flows for reactive updates
     private val _workflows = MutableStateFlow<List<Workflow>>(emptyList())
@@ -82,7 +90,8 @@ class AdvancedTaskerWorkflowService {
             val completedExecution = execution.copy(
                 endTime = System.currentTimeMillis(),
                 status = if (result.isSuccess) WorkflowStatus.COMPLETED else WorkflowStatus.FAILED,
-                result = result.getOrNull()
+                result = result.getOrNull(),
+                error = result.exceptionOrNull()?.message
             )
             
             _activeWorkflows.value = _activeWorkflows.value.filter { it.id != execution.id }
@@ -142,11 +151,15 @@ class AdvancedTaskerWorkflowService {
         return when (step.action) {
             is WorkflowAction.AIInference -> {
                 val prompt = substituteVariables(step.action.prompt, context)
-                "AI response to: $prompt"
+                modelProvider().getOrThrow().ask(
+                    "You are a step in an automation workflow. Reply with just the result.",
+                    prompt
+                ).getOrThrow()
             }
             is WorkflowAction.SendNotification -> {
                 val message = substituteVariables(step.action.message, context)
-                "Notification sent: $message"
+                val send = notifier ?: throw IllegalStateException("No notifier configured for SendNotification steps")
+                send(message).getOrThrow()
             }
             is WorkflowAction.Custom -> {
                 step.action.execute(context)
@@ -164,7 +177,7 @@ class AdvancedTaskerWorkflowService {
     /**
      * Evaluate a condition
      */
-    private fun evaluateCondition(
+    private suspend fun evaluateCondition(
         condition: WorkflowCondition,
         context: Map<String, Any>,
         results: Map<String, Any?>
@@ -193,12 +206,21 @@ class AdvancedTaskerWorkflowService {
     }
     
     /**
-     * Make an AI-powered decision
+     * Make an AI-powered decision: the model answers the yes/no question given the context
      */
-    private fun makeAIDecision(prompt: String, context: Map<String, Any>): Boolean {
-        // Placeholder: In production, use AI inference service
-        // For now, return a simple heuristic
-        return prompt.contains("yes") || prompt.contains("true")
+    private suspend fun makeAIDecision(prompt: String, context: Map<String, Any>): Boolean {
+        val question = substituteVariables(prompt, context)
+        val facts = context.entries.joinToString("\n") { "${it.key}: ${it.value}" }
+        val answer = modelProvider().getOrThrow().ask(
+            "Decide a workflow condition. Answer with exactly YES or NO.",
+            (if (facts.isNotBlank()) "Context:\n$facts\n\n" else "") + "Question: $question",
+            GenerationOptions(temperature = 0f, maxTokens = 3)
+        ).getOrThrow().trim().uppercase()
+        return when {
+            answer.startsWith("YES") -> true
+            answer.startsWith("NO") -> false
+            else -> throw IllegalStateException("Model gave no yes/no decision: $answer")
+        }
     }
     
     /**
@@ -269,23 +291,41 @@ class AdvancedTaskerWorkflowService {
             totalExecutions = executions.size,
             successRate = successful.toDouble() / executions.size,
             averageExecutionTime = executionTimes.average().toLong(),
-            failureReasons = emptyMap() // Placeholder
+            failureReasons = executions.filter { it.status == WorkflowStatus.FAILED }
+                .groupingBy { it.error ?: "unknown" }.eachCount()
         )
     }
     
     /**
      * Optimize workflow based on execution history
      */
-    fun optimizeWorkflow(workflowId: String): Result<Workflow> {
+    suspend fun optimizeWorkflow(workflowId: String): Result<Workflow> {
         return try {
             val workflow = _workflows.value.find { it.id == workflowId }
                 ?: return Result.failure(Exception("Workflow not found: $workflowId"))
             
             val analytics = analyzeWorkflow(workflowId)
+            val model = modelProvider().getOrThrow()
             
-            // Placeholder: In production, use ML to optimize workflow
-            // For now, just return the original workflow
-            Result.success(workflow)
+            // The model rewrites each AI step's prompt in light of how the workflow has performed;
+            // step structure (and therefore branching) is left intact
+            val history = "Runs: ${analytics.totalExecutions}, success rate ${"%.0f".format(analytics.successRate * 100)}%" +
+                if (analytics.failureReasons.isNotEmpty()) ", failures: ${analytics.failureReasons}" else ""
+            val steps = workflow.steps.map { step ->
+                val action = step.action as? WorkflowAction.AIInference ?: return@map step
+                val improved = model.ask(
+                    "You improve prompts used inside an automation workflow named \"${workflow.name}\" " +
+                        "(${workflow.description}). $history. Rewrite the prompt to be clearer and more reliable. " +
+                        "Keep every {{variable}} placeholder exactly. Output only the new prompt.",
+                    action.prompt,
+                    GenerationOptions(temperature = 0.2f, maxTokens = 300)
+                ).getOrThrow().trim()
+                val keepsVariables = Regex("\\{\\{\\w+}}").findAll(action.prompt).all { it.value in improved }
+                if (keepsVariables && improved.isNotBlank()) step.copy(action = WorkflowAction.AIInference(improved)) else step
+            }
+            val optimized = workflow.copy(steps = steps)
+            _workflows.value = _workflows.value.map { if (it.id == workflowId) optimized else it }
+            Result.success(optimized)
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -375,7 +415,8 @@ data class WorkflowExecution(
     val endTime: Long? = null,
     val status: WorkflowStatus,
     val context: MutableMap<String, Any>,
-    val result: Any? = null
+    val result: Any? = null,
+    val error: String? = null
 )
 
 enum class WorkflowStatus {

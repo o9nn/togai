@@ -10,7 +10,12 @@ import org.ninelym.cognitive.api.CognitiveMeshAPI
  * Provides integration layer between cognitive mesh and ROS-based robotic systems.
  * Supports topics, services, actions, and tf (transforms) framework.
  */
-class ROSBinding(private val meshAPI: CognitiveMeshAPI) {
+class ROSBinding(
+    private val meshAPI: CognitiveMeshAPI,
+    /** rosbridge_server WebSocket, e.g. ws://robot.local:9090. Actions fail when unset. */
+    private val rosbridgeUrl: String? = null,
+    private val http: okhttp3.OkHttpClient = okhttp3.OkHttpClient()
+) {
     
     private val rosAgents = mutableMapOf<String, ROSAgent>()
     private val activeTopics = mutableMapOf<String, ROSTopicStream>()
@@ -243,19 +248,19 @@ class ROSBinding(private val meshAPI: CognitiveMeshAPI) {
         action: ROSActionRecommendation
     ): ROSActionResult {
         
-        // This would interface with actual ROS action servers
-        // For now, we simulate the action execution
-        
         val startTime = System.currentTimeMillis()
-        val success = simulateROSActionExecution(action)
+        val outcome = publishViaRosbridge(action)
         val executionTime = System.currentTimeMillis() - startTime
         
         return ROSActionResult(
             actionType = action.actionType,
-            success = success,
+            success = outcome.isSuccess,
             executionTime = executionTime,
-            result = if (success) "Action completed successfully" else "Action failed",
-            feedback = "Cognitive mesh guided action execution"
+            result = outcome.fold(
+                onSuccess = { "Published ${action.messageType} to ${action.topicName} via rosbridge" },
+                onFailure = { "Action not executed: ${it.message}" }
+            ),
+            feedback = "Cognitive mesh guided action execution for $agentId"
         )
     }
     
@@ -367,9 +372,33 @@ class ROSBinding(private val meshAPI: CognitiveMeshAPI) {
         }
     }
     
-    private fun simulateROSActionExecution(action: ROSActionRecommendation): Boolean {
-        // Simulate action execution with some randomness for demo purposes
-        return Math.random() > 0.1 // 90% success rate
+    /**
+     * Sends the action as a rosbridge v2 `advertise` + `publish` on the action's topic.
+     */
+    private fun publishViaRosbridge(action: ROSActionRecommendation): Result<Unit> {
+        val url = rosbridgeUrl ?: return Result.failure(IllegalStateException("no rosbridge connection configured"))
+        val opened = java.util.concurrent.CountDownLatch(1)
+        var failure: Throwable? = null
+        val socket = http.newWebSocket(okhttp3.Request.Builder().url(url).build(), object : okhttp3.WebSocketListener() {
+            override fun onOpen(webSocket: okhttp3.WebSocket, response: okhttp3.Response) { opened.countDown() }
+            override fun onFailure(webSocket: okhttp3.WebSocket, t: Throwable, response: okhttp3.Response?) {
+                failure = t; opened.countDown()
+            }
+        })
+        if (!opened.await(5, java.util.concurrent.TimeUnit.SECONDS)) {
+            socket.cancel()
+            return Result.failure(IllegalStateException("rosbridge at $url did not answer"))
+        }
+        failure?.let { return Result.failure(it) }
+        fun obj(vararg pairs: Pair<String, kotlinx.serialization.json.JsonElement>) = kotlinx.serialization.json.JsonObject(mapOf(*pairs))
+        fun str(v: String) = kotlinx.serialization.json.JsonPrimitive(v)
+        val msg = kotlinx.serialization.json.JsonObject(action.parameters.mapValues { (_, v) ->
+            v.toDoubleOrNull()?.let { kotlinx.serialization.json.JsonPrimitive(it) } ?: str(v)
+        })
+        val sent = socket.send(obj("op" to str("advertise"), "topic" to str(action.topicName), "type" to str(action.messageType)).toString()) &&
+            socket.send(obj("op" to str("publish"), "topic" to str(action.topicName), "msg" to msg).toString())
+        socket.close(1000, null)
+        return if (sent) Result.success(Unit) else Result.failure(IllegalStateException("rosbridge connection closed before publishing"))
     }
 }
 

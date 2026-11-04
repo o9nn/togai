@@ -20,6 +20,10 @@ permissions:
   contents: write
   packages: write
 
+env:
+  # Windows runners default to cp1252; the test steps print non-ASCII status marks
+  PYTHONIOENCODING: utf-8
+
 jobs:
   validate-release:
     name: Validate Release

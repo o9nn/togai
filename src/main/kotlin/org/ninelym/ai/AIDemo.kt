@@ -1,5 +1,6 @@
 package org.ninelym.ai
 
+import kotlinx.coroutines.runBlocking
 import org.ninelym.cognitive.CognitiveEngine
 
 /**
@@ -72,7 +73,7 @@ class AIDemo {
         // Demo 5: System Integration
         demoSystemIntegration()
         
-        println("\n🎉 Demo completed! All features demonstrated successfully.")
+        println("\n🏁 Demo finished. Each step above reports whether it actually succeeded.")
         displayFinalStats()
     }
     
@@ -108,7 +109,7 @@ class AIDemo {
         println("✅ Created characters: ${assistant.name} (Assistant), ${creative.name} (Creative)")
     }
     
-    private fun demoCharacterConversations() {
+    private fun demoCharacterConversations() = runBlocking {
         println("\n🎭 DEMO 1: Character Conversations")
         println("-".repeat(40))
         
@@ -161,7 +162,7 @@ class AIDemo {
         }
     }
     
-    private fun demoImageGeneration() {
+    private fun demoImageGeneration() = runBlocking {
         println("\n🖼️  DEMO 2: Local Image Generation")
         println("-".repeat(40))
         
@@ -247,14 +248,14 @@ class AIDemo {
         println("   💾 Memory Usage: ${aiStats.memoryUsageMB} MB")
         println("   🤖 Loaded AI Models: ${aiStats.loadedModels}/${aiStats.totalModels}")
         
-        // Demonstrate data control features
-        println("\n🛡️  Privacy Features Demonstrated:")
-        println("   ✅ All data processing happens locally on device")
-        println("   ✅ No internet connection required for AI features")
-        println("   ✅ Encrypted local storage for sensitive data")
-        println("   ✅ User-controlled data retention policies")
-        println("   ✅ Complete conversation history control")
-        println("   ✅ Character data stored locally and privately")
+        // Where the language model runs depends on configuration; report it rather than assume it
+        val endpoint = org.ninelym.llm.LanguageModels.currentEndpoint().getOrNull()?.config?.baseUrl
+        val local = endpoint?.let { java.net.URI(it).host in setOf("127.0.0.1", "localhost", "::1") }
+        println("\n🛡️  Model location: " + when (local) {
+            null -> "no model configured"
+            true -> "served on this device ($endpoint)"
+            false -> "remote endpoint ($endpoint) - prompts leave the device"
+        })
     }
     
     private fun demoSystemIntegration() {
@@ -327,7 +328,7 @@ class AIDemo {
         println("   Processing Nodes: ${integrationStats.totalProcessingNodes}")
         println("   Integration Health: ${integrationStats.integrationHealth.toInt()}%")
         
-        println("\n🎉 Demo completed successfully!")
+        println("\n🏁 Demo finished.")
         println("   This demonstration showed how Layla AI-inspired features")
         println("   integrate with advanced cognitive computing architecture.")
         println("   All processing happened locally with privacy-first design.")

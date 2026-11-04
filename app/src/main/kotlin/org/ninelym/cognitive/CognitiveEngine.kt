@@ -241,6 +241,11 @@ class CognitiveEngine(
     /**
      * Convert hypergraph atoms back to Scheme expression
      */
+    /**
+     * Atoms whose name matches [predicate]
+     */
+    fun findAtoms(predicate: (Atom) -> Boolean): List<Atom> = hypergraph.getAllAtoms().filter(predicate)
+    
     fun generateSchemeExpression(atomType: AtomType? = null): String {
         val atoms = if (atomType != null) {
             hypergraph.getAtomsByType(atomType)
@@ -448,7 +453,7 @@ class CognitiveEngine(
     /**
      * Process natural language through cognitive AI pipeline
      */
-    fun processNaturalLanguage(
+    suspend fun processNaturalLanguage(
         input: String,
         character: Character? = null,
         context: ConversationContext = ConversationContext.DEFAULT
@@ -487,7 +492,7 @@ class CognitiveEngine(
     /**
      * Generate image through cognitive-enhanced AI pipeline
      */
-    fun generateImage(
+    suspend fun generateImage(
         prompt: String,
         style: ImageStyle = ImageStyle.DEFAULT,
         character: Character? = null
@@ -575,8 +580,8 @@ class CognitiveEngine(
         // Optimize cognitive components
         optimize()
         
-        // Optimize AI components (through cleanup, cache management, etc.)
-        // This would call internal AI system optimization
+        // Optimize AI components: enforce data retention and drop cached images
+        aiProcessor.optimize()
         
         // Perform cross-system optimization
         performCrossSystemOptimization()

@@ -2,13 +2,15 @@
 Tests for Toga Emotional Intelligence Module
 """
 
+import os
 import unittest
+
 from python.helpers.toga_emotional_intelligence import (
-    EmotionCategory,
-    SentimentPolarity,
     EmotionalContext,
-    EmpatheticResponse,
     EmotionalIntelligenceEngine,
+    EmotionCategory,
+    EmpatheticResponse,
+    SentimentPolarity,
 )
 
 
@@ -17,7 +19,16 @@ class TestEmotionCategory(unittest.TestCase):
 
     def test_all_categories_exist(self):
         """Test that all expected emotion categories exist."""
-        expected = ["JOY", "SADNESS", "ANGER", "FEAR", "SURPRISE", "DISGUST", "TRUST", "ANTICIPATION"]
+        expected = [
+            "JOY",
+            "SADNESS",
+            "ANGER",
+            "FEAR",
+            "SURPRISE",
+            "DISGUST",
+            "TRUST",
+            "ANTICIPATION",
+        ]
         actual = [e.name for e in EmotionCategory]
         self.assertEqual(set(actual), set(expected))
 
@@ -98,6 +109,25 @@ class TestEmotionalIntelligenceEngine(unittest.TestCase):
         self.assertIsNotNone(context.primary_emotion)
         self.assertGreaterEqual(context.intensity, 0.0)
         self.assertGreaterEqual(context.confidence, 0.0)
+
+
+@unittest.skipUnless(
+    os.environ.get("TOGAI_LLM_BASE_URL") and os.environ.get("TOGAI_LLM_MODEL"),
+    "no live model configured (TOGAI_LLM_BASE_URL / TOGAI_LLM_MODEL)",
+)
+class TestEmpatheticResponseGeneration(unittest.TestCase):
+    """Empathetic responses are written by a real served model."""
+
+    def test_generates_all_parts_with_the_model(self):
+        engine = EmotionalIntelligenceEngine()
+        message = "I failed my exam and I feel terrible."
+        context = engine.analyze_emotional_context(message)
+
+        response = engine.generate_empathetic_response(context, message)
+
+        for part in (response.acknowledgment, response.validation, response.support):
+            self.assertIsInstance(part, str)
+            self.assertTrue(part.strip())
 
 
 if __name__ == "__main__":

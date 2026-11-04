@@ -1,5 +1,8 @@
 package org.ninelym.cognitive.distributed
 
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.RequestBody.Companion.toRequestBody
+
 import org.ninelym.cognitive.hypergraph.Hypergraph
 import org.ninelym.cognitive.hypergraph.Atom
 import org.ninelym.cognitive.hypergraph.AtomType
@@ -397,13 +400,25 @@ class DistributedCognitiveSynchronization(
      * Perform handshake with peer
      */
     private suspend fun performHandshake(connection: PeerConnection): HandshakeResult {
-        // In a real implementation, this would involve network communication
-        // For now, simulate successful handshake
-        return HandshakeResult(
-            success = true,
-            message = "Handshake successful",
-            peerVectorClock = VectorClock(connection.peerId)
-        )
+        // Confirm the peer endpoint is actually reachable before treating it as connected
+        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val uri = java.net.URI(if ("://" in connection.endpoint) connection.endpoint else "tcp://${connection.endpoint}")
+                val port = if (uri.port > 0) uri.port else when (uri.scheme) { "https", "wss" -> 443; else -> 80 }
+                java.net.Socket().use { it.connect(java.net.InetSocketAddress(uri.host, port), 3000) }
+                HandshakeResult(
+                    success = true,
+                    message = "Peer reachable at ${uri.host}:$port",
+                    peerVectorClock = VectorClock(connection.peerId)
+                )
+            } catch (e: Exception) {
+                HandshakeResult(
+                    success = false,
+                    message = "Peer ${connection.endpoint} unreachable: ${e.message}",
+                    peerVectorClock = VectorClock(connection.peerId)
+                )
+            }
+        }
     }
 
     /**
@@ -420,21 +435,46 @@ class DistributedCognitiveSynchronization(
     }
 
     /**
-     * Send operation to peer (stub for network layer)
+     * Send operation to peer: HTTP POST to `{endpoint}/sync`. Only delivered messages are counted.
      */
     private suspend fun sendToPeer(peer: PeerConnection, operation: SyncOperation) {
-        // In a real implementation, this would send over network
-        syncStats.messagesSent.incrementAndGet()
+        postToPeer(peer, operation.type.name, operation.timestamp, operation.data.toString())
     }
 
     /**
-     * Send sync data to peer (stub for network layer)
+     * Send sync data to peer
      */
     private suspend fun sendSyncDataToPeer(peer: PeerConnection, data: SyncData) {
-        // In a real implementation, this would send over network
-        syncStats.messagesSent.incrementAndGet()
-        syncStats.bytesSent.addAndGet(estimateSyncDataSize(data))
+        postToPeer(peer, "SYNC_DATA", System.currentTimeMillis(), data.toString())
     }
+
+    private val http by lazy { okhttp3.OkHttpClient() }
+
+    private suspend fun postToPeer(peer: PeerConnection, type: String, timestamp: Long, payload: String) =
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val base = if ("://" in peer.endpoint) peer.endpoint else "http://${peer.endpoint}"
+            val body = kotlinx.serialization.json.buildJsonObject {
+                put("from", kotlinx.serialization.json.JsonPrimitive(localNodeId))
+                put("type", kotlinx.serialization.json.JsonPrimitive(type))
+                put("timestamp", kotlinx.serialization.json.JsonPrimitive(timestamp))
+                put("payload", kotlinx.serialization.json.JsonPrimitive(payload))
+            }.toString().toByteArray()
+            val request = okhttp3.Request.Builder().url("${base.trimEnd('/')}/sync")
+                .post(body.toRequestBody("application/json".toMediaTypeOrNull()))
+                .build()
+            try {
+                http.newCall(request).execute().use { response ->
+                    if (response.isSuccessful) {
+                        syncStats.messagesSent.incrementAndGet()
+                        syncStats.bytesSent.addAndGet(body.size.toLong())
+                    } else {
+                        peer.status = ConnectionStatus.ERROR
+                    }
+                }
+            } catch (e: java.io.IOException) {
+                peer.status = ConnectionStatus.ERROR
+            }
+        }
 
     /**
      * Estimate size of sync data in bytes

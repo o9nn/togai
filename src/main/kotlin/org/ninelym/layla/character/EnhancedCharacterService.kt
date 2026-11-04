@@ -2,7 +2,20 @@ package org.ninelym.layla.character
 
 import org.ninelym.ai.CharacterSystem
 import org.ninelym.layla.voice.VoiceProfile
+import org.ninelym.llm.GenerationOptions
+import org.ninelym.llm.LanguageModel
+import org.ninelym.llm.LanguageModels
+import org.ninelym.llm.ask
+import java.io.File
 import java.util.concurrent.ConcurrentHashMap
+
+/**
+ * Receives animation commands for a rendered avatar (e.g. a Live2D/Cubism renderer).
+ */
+interface CharacterAnimationSink {
+    fun playMotion(characterId: String, motionFile: String)
+    fun playLipSync(characterId: String, keyframes: List<Phoneme>)
+}
 
 /**
  * Enhanced Character System Service
@@ -10,7 +23,12 @@ import java.util.concurrent.ConcurrentHashMap
  * 
  * Extends the basic CharacterSystem with animation, expressions, and personality modeling.
  */
-class EnhancedCharacterService {
+class EnhancedCharacterService(
+    private val modelProvider: () -> Result<LanguageModel> = { LanguageModels.current() },
+    /** Root directory holding `<characterId>/model.moc3` etc. */
+    private val characterAssetsRoot: File? = null,
+    var animationSink: CharacterAnimationSink? = null
+) {
     
     private val characterSystem = CharacterSystem()
     private val characterAnimations = ConcurrentHashMap<String, Live2DAnimation>()
@@ -82,36 +100,35 @@ class EnhancedCharacterService {
     }
     
     /**
-     * Generate context-aware expression
+     * Decide the character's facial expression for what they are saying. The model reads the
+     * line in light of the character's traits and picks one of [Expression].
      */
-    fun generateExpression(
+    suspend fun generateExpression(
         characterId: String,
-        messageContext: String,
-        sentiment: Sentiment
-    ): Expression {
-        // Use personality engine to determine appropriate expression
-        return personalityEngine.determineExpression(characterId, messageContext, sentiment)
+        spokenText: String
+    ): Result<Expression> {
+        val model = modelProvider().getOrElse { return Result.failure(it) }
+        val traits = personalityEngine.getTraits(characterId)
+            ?.entries?.joinToString(", ") { "${it.key} ${"%.1f".format(it.value)}" } ?: "unspecified"
+        val options = Expression.values().joinToString(", ") { it.name }
+        return model.ask(
+            "You choose an animated character's facial expression. Character traits: $traits. " +
+                "Reply with exactly one word from: $options.",
+            "The character says: \"$spokenText\"",
+            GenerationOptions(temperature = 0f, maxTokens = 5)
+        ).mapCatching { reply ->
+            val word = reply.uppercase()
+            Expression.values().firstOrNull { word.contains(it.name) }
+                ?: throw IllegalStateException("Model did not name an expression: $reply")
+        }
     }
     
     /**
      * Sync expression with speech
      */
     suspend fun syncWithSpeech(characterId: String, text: String): Result<Unit> {
-        return try {
-            // Analyze text for emotional content
-            val sentiment = analyzeSentiment(text)
-            val expression = generateExpression(characterId, text, sentiment)
-            
-            // Set expression
-            setExpression(characterId, expression)
-            
-            // Trigger lip-sync animation
-            triggerLipSync(characterId, text)
-            
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
+        val expression = generateExpression(characterId, text).getOrElse { return Result.failure(it) }
+        return setExpression(characterId, expression).onSuccess { triggerLipSync(characterId, text) }
     }
     
     /**
@@ -154,12 +171,13 @@ class EnhancedCharacterService {
      * Load character animation model
      */
     private fun loadCharacterAnimation(characterId: String) {
-        // Load Live2D model for character
+        // Live2D assets are only marked loaded when they actually exist
+        val dir = characterAssetsRoot?.resolve(characterId)
         val animation = Live2DAnimation(
-            modelPath = "/characters/$characterId/model.moc3",
-            texturesPath = "/characters/$characterId/textures/",
-            motionsPath = "/characters/$characterId/motions/",
-            isLoaded = true
+            modelPath = dir?.resolve("model.moc3")?.path ?: "",
+            texturesPath = dir?.resolve("textures")?.path ?: "",
+            motionsPath = dir?.resolve("motions")?.path ?: "",
+            isLoaded = dir?.resolve("model.moc3")?.isFile == true
         )
         
         characterAnimations[characterId] = animation
@@ -182,49 +200,27 @@ class EnhancedCharacterService {
             Expression.CONFUSED -> "confused.motion3.json"
         }
         
-        // Play Live2D motion
-        // live2dPlayer.playMotion(animation.motionsPath + motionFile)
+        if (animation.isLoaded) {
+            animationSink?.playMotion(characterId, File(animation.motionsPath, motionFile).path)
+        }
     }
     
     /**
      * Trigger lip-sync animation
      */
     private suspend fun triggerLipSync(characterId: String, text: String) {
-        // Analyze text for phonemes
-        val phonemes = analyzePhonemes(text)
-        
-        // Generate lip-sync keyframes
-        // This would sync mouth movements with speech
-    }
-    
-    /**
-     * Analyze text sentiment
-     */
-    private fun analyzeSentiment(text: String): Sentiment {
-        // Simple sentiment analysis
-        val positiveWords = listOf("happy", "great", "wonderful", "excellent", "love")
-        val negativeWords = listOf("sad", "bad", "terrible", "hate", "angry")
-        
-        val textLower = text.toLowerCase()
-        val positiveCount = positiveWords.count { textLower.contains(it) }
-        val negativeCount = negativeWords.count { textLower.contains(it) }
-        
-        return when {
-            positiveCount > negativeCount -> Sentiment.POSITIVE
-            negativeCount > positiveCount -> Sentiment.NEGATIVE
-            else -> Sentiment.NEUTRAL
-        }
+        val animation = characterAnimations[characterId] ?: return
+        if (animation.isLoaded) animationSink?.playLipSync(characterId, analyzePhonemes(text))
     }
     
     /**
      * Analyze text for phonemes (for lip-sync)
      */
     private fun analyzePhonemes(text: String): List<Phoneme> {
-        // Simplified phoneme analysis
-        // In production, this would use a proper phoneme analyzer
-        return text.split(" ").map { word ->
-            Phoneme(word, 100L) // Duration in ms
-        }
+        // Approximate mouth shapes: one keyframe per syllable-like vowel group (~120 ms each)
+        return Regex("[^aeiouy\\s]*[aeiouy]+", RegexOption.IGNORE_CASE).findAll(text).map {
+            Phoneme(it.value, 120L)
+        }.toList()
     }
     
     private fun loadLive2DModels() {
@@ -332,27 +328,6 @@ class PersonalityEngine {
             "skepticism" to 0.75f,
             "curiosity" to 0.8f
         )
-    }
-    
-    fun determineExpression(
-        characterId: String,
-        context: String,
-        sentiment: Sentiment
-    ): Expression {
-        val traits = characterTraits[characterId] ?: return Expression.NEUTRAL
-        
-        // Determine expression based on sentiment and personality traits
-        return when (sentiment) {
-            Sentiment.POSITIVE -> {
-                val playfulness = traits["playfulness"] ?: 0.5f
-                if (playfulness > 0.7f) Expression.HAPPY else Expression.NEUTRAL
-            }
-            Sentiment.NEGATIVE -> {
-                val empathy = traits["empathy"] ?: 0.5f
-                if (empathy > 0.7f) Expression.SAD else Expression.THINKING
-            }
-            Sentiment.NEUTRAL -> Expression.NEUTRAL
-        }
     }
     
     fun getTraits(characterId: String): Map<String, Float>? {

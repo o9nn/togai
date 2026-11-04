@@ -7,6 +7,10 @@ on:
     branches: [ main, develop ]
   workflow_dispatch:
 
+env:
+  # Windows runners default to cp1252; the test steps print non-ASCII status marks
+  PYTHONIOENCODING: utf-8
+
 jobs:
   lint:
     name: Code Quality & Linting
@@ -133,7 +137,32 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e .
-      
+
+      # Toga's lines come from a real model: serve a small one locally for the examples
+      - name: Cache model
+        uses: actions/cache@v4
+        with:
+          path: models
+          key: qwen2.5-0.5b-instruct-q4_k_m
+
+      - name: Serve local language model
+        run: |
+          pip install 'llama-cpp-python[server]==0.3.36' \
+            --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+          mkdir -p models
+          [ -f models/qwen2.5-0.5b-instruct-q4_k_m.gguf ] || curl -fsSL -o models/qwen2.5-0.5b-instruct-q4_k_m.gguf \
+            https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf
+          nohup python -m llama_cpp.server --model models/qwen2.5-0.5b-instruct-q4_k_m.gguf \
+            --model_alias qwen2.5-0.5b-instruct --host 127.0.0.1 --port 8080 --n_ctx 4096 > llama-server.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf http://127.0.0.1:8080/v1/models && break; sleep 2; done
+          curl -sf http://127.0.0.1:8080/v1/models || (cat llama-server.log; exit 1)
+          echo "TOGAI_LLM_BASE_URL=http://127.0.0.1:8080/v1" >> "$GITHUB_ENV"
+          echo "TOGAI_LLM_MODEL=qwen2.5-0.5b-instruct" >> "$GITHUB_ENV"
+
+      - name: Run model-backed unit tests
+        run: |
+          python -m unittest tests.test_toga_personality tests.test_toga_emotional_intelligence
+
       - name: Run demo script
         run: |
           echo "n" | python python/examples/demo_toga.py

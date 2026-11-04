@@ -3,6 +3,10 @@ package org.ninelym.animation
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import java.io.File
+import org.ninelym.llm.GenerationOptions
+import org.ninelym.llm.LanguageModel
+import org.ninelym.llm.LanguageModels
+import org.ninelym.llm.ask
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -199,13 +203,15 @@ class CubismModel(
                 expressions.add(CubismExpression(name, file))
             }
 
-            // Try native loading if available
-            if (CubismJni.isLibraryLoaded()) {
-                nativeHandle = CubismJni.cubism_load_model(assets.modelPath)
-                if (nativeHandle == 0L) {
-                    _state.value = CubismModelState.ERROR
-                    return Result.failure(Exception("Failed to load native model"))
-                }
+            // Rendering requires the native Cubism runtime; without it the model is not ready
+            if (!CubismJni.isLibraryLoaded()) {
+                _state.value = CubismModelState.ERROR
+                return Result.failure(Exception("Cubism native runtime is not packaged in this build"))
+            }
+            nativeHandle = CubismJni.cubism_load_model(assets.modelPath)
+            if (nativeHandle == 0L) {
+                _state.value = CubismModelState.ERROR
+                return Result.failure(Exception("Failed to load native model"))
             }
 
             _state.value = CubismModelState.READY
@@ -276,17 +282,6 @@ class CubismModel(
     }
 
     /**
-     * Start random motion from group
-     */
-    fun startRandomMotion(group: String, priority: MotionPriority = MotionPriority.NORMAL): Boolean {
-        val groupMotions = motions[group] ?: return false
-        if (groupMotions.isEmpty()) return false
-
-        val randomIndex = (Math.random() * groupMotions.size).toInt()
-        return startMotion(group, randomIndex, priority)
-    }
-
-    /**
      * Set expression
      */
     fun setExpression(name: String): Boolean {
@@ -303,12 +298,40 @@ class CubismModel(
     }
 
     /**
-     * Set random expression
+     * Let the language model choose the expression (and, if [motionGroup] is given, the motion)
+     * that fits what the character is saying, then apply it.
      */
-    fun setRandomExpression(): Boolean {
-        if (expressions.isEmpty()) return false
-        val randomIndex = (Math.random() * expressions.size).toInt()
-        return setExpression(expressions[randomIndex].name)
+    suspend fun reactTo(
+        spokenText: String,
+        motionGroup: String? = null,
+        modelProvider: () -> Result<LanguageModel> = { LanguageModels.current() }
+    ): Result<String> {
+        if (expressions.isEmpty()) return Result.failure(IllegalStateException("Model has no expressions"))
+        val model = modelProvider().getOrElse { return Result.failure(it) }
+        val names = expressions.map { it.name }
+        val chosen = model.ask(
+            "You animate a Live2D character. Pick the facial expression that fits the line. " +
+                "Reply with exactly one of: ${names.joinToString(", ")}.",
+            "Line: \"$spokenText\"",
+            GenerationOptions(temperature = 0f, maxTokens = 10)
+        ).mapCatching { reply ->
+            names.firstOrNull { reply.contains(it, ignoreCase = true) }
+                ?: throw IllegalStateException("Model did not name an expression: $reply")
+        }.getOrElse { return Result.failure(it) }
+        if (!setExpression(chosen)) return Result.failure(IllegalStateException("Could not set expression $chosen"))
+        val groupMotions = motionGroup?.let { motions[it] }
+        if (!groupMotions.isNullOrEmpty()) {
+            val motionNames = groupMotions.map { File(it.file).nameWithoutExtension }
+            model.ask(
+                "Pick the body motion that fits the line. Reply with exactly one of: ${motionNames.joinToString(", ")}.",
+                "Line: \"$spokenText\"",
+                GenerationOptions(temperature = 0f, maxTokens = 10)
+            ).getOrNull()?.let { reply ->
+                motionNames.indexOfFirst { reply.contains(it, ignoreCase = true) }
+                    .takeIf { it >= 0 }?.let { startMotion(motionGroup, it) }
+            }
+        }
+        return Result.success(chosen)
     }
 
     /**
@@ -422,10 +445,11 @@ class CubismEngine {
      */
     fun initialize(): Result<Unit> {
         return try {
-            CubismJni.loadLibrary() // Try to load, ignore failure
-
-            if (CubismJni.isLibraryLoaded()) {
-                CubismJni.cubism_init()
+            if (!CubismJni.loadLibrary()) {
+                return Result.failure(Exception("Cubism native runtime is not packaged in this build"))
+            }
+            if (!CubismJni.cubism_init()) {
+                return Result.failure(Exception("Cubism runtime failed to initialize"))
             }
 
             _initialized.value = true

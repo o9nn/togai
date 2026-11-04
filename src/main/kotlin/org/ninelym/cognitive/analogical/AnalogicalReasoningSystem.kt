@@ -3,6 +3,7 @@ package org.ninelym.cognitive.analogical
 import org.ninelym.cognitive.hypergraph.Hypergraph
 import org.ninelym.cognitive.hypergraph.Atom
 import org.ninelym.cognitive.hypergraph.AtomType
+import org.ninelym.cognitive.hypergraph.TruthValue
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.*
 
@@ -172,9 +173,9 @@ class AnalogicalReasoningSystem(
         domain.entities.forEach { entity ->
             val atom = Atom(
                 id = "${domain.id}:entity:${entity.id}",
-                type = AtomType.CONCEPT_NODE,
+                type = AtomType.CONCEPT,
                 name = entity.name,
-                truthValue = 1.0f
+                truthValue = TruthValue(1.0f, 1.0f)
             )
             hypergraph.addAtom(atom)
         }
@@ -183,9 +184,9 @@ class AnalogicalReasoningSystem(
         domain.relations.forEach { relation ->
             val atom = Atom(
                 id = "${domain.id}:relation:${relation.id}",
-                type = AtomType.EVALUATION_LINK,
+                type = AtomType.EVALUATION,
                 name = relation.predicate,
-                truthValue = relation.weight
+                truthValue = TruthValue(relation.weight, 1.0f)
             )
             hypergraph.addAtom(atom)
         }

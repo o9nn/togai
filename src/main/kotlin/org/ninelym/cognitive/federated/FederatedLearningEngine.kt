@@ -128,13 +128,6 @@ class FederatedLearningEngine(
         var lastUpdated: Long = System.currentTimeMillis()
         val updateHistory = mutableListOf<GlobalModelUpdate>()
 
-        data class GlobalModelUpdate(
-            val version: Int,
-            val timestamp: Long,
-            val participants: Int,
-            val aggregatedLoss: Float
-        )
-
         fun initialize(dimensions: Int) {
             weights = FloatArray(dimensions) { (secureRandom.nextGaussian() * 0.01).toFloat() }
             version = 0
@@ -221,7 +214,7 @@ class FederatedLearningEngine(
      */
     suspend fun pruneInactiveParticipants(maxInactiveMs: Long = 3600000) = mutex.withLock {
         val cutoff = System.currentTimeMillis() - maxInactiveMs
-        participants.values.filter { it.lastSeen < cutoff }.forEach {
+        participants.values.filter { it.lastSeen <= cutoff }.forEach {
             it.isActive = false
         }
     }
@@ -683,3 +676,13 @@ class FederatedLearningEngine(
         globalModel.updateHistory.clear()
     }
 }
+
+/**
+ * One aggregation round applied to the global model
+ */
+data class GlobalModelUpdate(
+    val version: Int,
+    val timestamp: Long,
+    val participants: Int,
+    val aggregatedLoss: Float
+)

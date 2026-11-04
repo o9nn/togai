@@ -23,7 +23,7 @@ class CognitivePrimitivesTest {
         )
         
         assertTrue("Tensor should be valid", tensor.isValid())
-        assertEquals("Tensor should have 5 dimensions", 5, tensor.toArray().size)
+        assertEquals("Tensor should have 5 core dimensions", 5, tensor.to5DArray().size)
         
         val attentionWeight = tensor.computeAttentionWeight()
         assertEquals("Attention weight should be salience * autonomy", 0.42f, attentionWeight, 0.01f)

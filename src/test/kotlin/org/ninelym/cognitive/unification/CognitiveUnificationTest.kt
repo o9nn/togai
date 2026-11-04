@@ -33,7 +33,9 @@ class CognitiveUnificationTest {
         ecanKernel = ECANKernel(hypergraph)
         metaSystem = MetaCognitivePathwaySystem(hypergraph, ecanKernel)
         optimizer = EvolutionaryOptimizer(hypergraph, ecanKernel, metaSystem)
-        verificationSystem = RecursiveVerificationSystem(hypergraph, ecanKernel, metaSystem, optimizer)
+        verificationSystem = RecursiveVerificationSystem(
+            hypergraph, ecanKernel, org.ninelym.cognitive.verification.CognitiveVerificationSystem(), metaSystem, optimizer
+        )
         
         stateMonitor = UnifiedCognitiveStateMonitor(
             hypergraph, ecanKernel, metaSystem, optimizer, verificationSystem
@@ -62,7 +64,7 @@ class CognitiveUnificationTest {
         // Create links for system integration
         for (i in 0 until testAtoms.size - 1) {
             if (i % 4 == 0) {
-                hypergraph.addLink(testAtoms[i].id, testAtoms[i + 1].id, "unification_link")
+                hypergraph.addLink(HyperLink("unification_link_$i", LinkType.SIMILARITY, listOf(testAtoms[i].id, testAtoms[i + 1].id)))
             }
         }
         
@@ -166,7 +168,7 @@ class CognitiveUnificationTest {
         for ((phaseName, tensor) in tensorSignatures) {
             assertTrue("Tensor for $phaseName should be valid", tensor.isValid())
             
-            val tensorArray = tensor.toArray()
+            val tensorArray = tensor.to5DArray()
             assertEquals("Tensor should have 5 dimensions", 5, tensorArray.size)
             
             for (i in tensorArray.indices) {

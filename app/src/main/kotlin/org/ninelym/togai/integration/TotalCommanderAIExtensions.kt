@@ -31,7 +31,7 @@ suspend fun TotalCommanderService.organizeWithAI(
         return OrganizeResult(0, 0, emptyMap(), emptyList())
     }
 
-    // Get AI to categorize files
+    // Get AI to categorize files (up to 50 per run)
     val fileList = files.take(50).joinToString("\n") { "${it.name} (${formatSize(it.size)})" }
 
     val categorization = cogai.ask(
@@ -54,7 +54,12 @@ Output format: {"filename.ext": "Category", ...}""",
     val categoryCounts = mutableMapOf<String, Int>()
 
     for (file in files) {
-        val category = categoryMap[file.name] ?: guessCategory(file)
+        // Only files the model actually categorized are moved
+        val category = categoryMap[file.name]
+        if (category == null) {
+            errors.add("Left ${file.name} in place: the model did not categorize it")
+            continue
+        }
         val targetDir = "$destDir/$category"
 
         try {

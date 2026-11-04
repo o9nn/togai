@@ -2,25 +2,31 @@ package org.ninelym.layla.auth
 
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
-import java.security.MessageDigest
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
+import java.io.File
+import java.security.SecureRandom
+import java.util.Base64
 import java.util.UUID
+import javax.crypto.SecretKeyFactory
+import javax.crypto.spec.PBEKeySpec
 
 /**
  * Authentication Service
  * 
- * Manages user authentication, session management, and token storage.
- * Integrates with Auth0 and OpenID AppAuth for secure authentication.
- * 
- * Features:
- * - OAuth 2.0 / OIDC authentication
- * - Secure token storage
- * - Session management
- * - Biometric authentication support
- * - Multi-device sync (optional)
+ * Local, on-device accounts: passwords are stored as salted PBKDF2 hashes and sessions are
+ * persisted in [storageDir]. External identity providers (OAuth) and biometrics need platform
+ * integrations that aren't bundled, so those calls fail rather than pretending to succeed.
  */
-class AuthenticationService {
+class AuthenticationService(
+    private val storageDir: File = File(System.getProperty("java.io.tmpdir"), "togai-auth")
+) {
     
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+    private val json = Json { ignoreUnknownKeys = true }
+    private val accountsFile get() = File(storageDir, "accounts.json")
+    private val sessionFile get() = File(storageDir, "session.json")
     
     private val _authState = MutableStateFlow<AuthState>(AuthState.Unauthenticated)
     val authState: StateFlow<AuthState> = _authState
@@ -31,24 +37,39 @@ class AuthenticationService {
     private var sessionToken: String? = null
     private var refreshToken: String? = null
     
+    @Serializable
+    private data class StoredAccount(
+        val id: String,
+        val email: String,
+        val name: String,
+        val createdAt: Long,
+        val salt: String,
+        val hash: String
+    )
+    
+    @Serializable
+    private data class StoredSession(
+        val userId: String,
+        val accessToken: String,
+        val refreshToken: String,
+        val expiresAt: Long
+    )
+    
     /**
      * Initialize authentication service
      */
     suspend fun initialize(): Result<Unit> {
         return withContext(Dispatchers.IO) {
             try {
-                // Check for saved session
+                // Restore a saved, unexpired session
                 val savedSession = loadSavedSession()
                 if (savedSession != null) {
-                    // Validate saved session
-                    val valid = validateSession(savedSession)
-                    if (valid) {
+                    if (validateSession(savedSession)) {
                         sessionToken = savedSession.accessToken
                         refreshToken = savedSession.refreshToken
                         _currentUser.value = savedSession.user
                         _authState.value = AuthState.Authenticated(savedSession.user)
                     } else {
-                        // Try to refresh token
                         refreshSession(savedSession)
                     }
                 }
@@ -61,46 +82,21 @@ class AuthenticationService {
     }
     
     /**
-     * Sign in with email and password
-     * Stub implementation - would integrate with Auth0 in production
+     * Sign in with email and password against the local account store
      */
     suspend fun signIn(email: String, password: String): Result<User> {
         return withContext(Dispatchers.IO) {
             try {
                 _authState.value = AuthState.Authenticating
                 
-                // Stub: In actual implementation, would call Auth0 API
-                // val auth0 = Auth0(clientId, domain)
-                // val result = auth0.login(email, password)
+                val account = loadAccounts()[email.lowercase()]
+                    ?: throw SecurityException("No account for $email")
+                if (!hash(password, Base64.getDecoder().decode(account.salt)).contentEquals(Base64.getDecoder().decode(account.hash))) {
+                    throw SecurityException("Incorrect password")
+                }
                 
-                // Simulate authentication
-                delay(500)
-                
-                // Create user
-                val user = User(
-                    id = UUID.randomUUID().toString(),
-                    email = email,
-                    name = extractNameFromEmail(email),
-                    createdAt = System.currentTimeMillis()
-                )
-                
-                // Generate tokens
-                sessionToken = generateToken()
-                refreshToken = generateToken()
-                
-                // Save session
-                saveSession(
-                    Session(
-                        user = user,
-                        accessToken = sessionToken!!,
-                        refreshToken = refreshToken!!,
-                        expiresAt = System.currentTimeMillis() + (24 * 60 * 60 * 1000) // 24 hours
-                    )
-                )
-                
-                _currentUser.value = user
-                _authState.value = AuthState.Authenticated(user)
-                
+                val user = User(id = account.id, email = account.email, name = account.name, createdAt = account.createdAt)
+                startSession(user)
                 Result.success(user)
             } catch (e: Exception) {
                 _authState.value = AuthState.Error(e.message ?: "Authentication failed")
@@ -113,46 +109,11 @@ class AuthenticationService {
      * Sign in with OAuth provider (Google, GitHub, etc.)
      */
     suspend fun signInWithOAuth(provider: OAuthProvider): Result<User> {
-        return withContext(Dispatchers.Main) {
-            try {
-                _authState.value = AuthState.Authenticating
-                
-                // Stub: In actual implementation, would launch OAuth flow
-                // val auth0 = Auth0(clientId, domain)
-                // val result = auth0.loginWithOAuth(provider.name)
-                
-                // Simulate OAuth flow
-                delay(1000)
-                
-                val user = User(
-                    id = UUID.randomUUID().toString(),
-                    email = "user@${provider.name.lowercase()}.com",
-                    name = "OAuth User",
-                    createdAt = System.currentTimeMillis(),
-                    oauthProvider = provider
-                )
-                
-                sessionToken = generateToken()
-                refreshToken = generateToken()
-                
-                saveSession(
-                    Session(
-                        user = user,
-                        accessToken = sessionToken!!,
-                        refreshToken = refreshToken!!,
-                        expiresAt = System.currentTimeMillis() + (24 * 60 * 60 * 1000)
-                    )
-                )
-                
-                _currentUser.value = user
-                _authState.value = AuthState.Authenticated(user)
-                
-                Result.success(user)
-            } catch (e: Exception) {
-                _authState.value = AuthState.Error(e.message ?: "OAuth authentication failed")
-                Result.failure(e)
-            }
-        }
+        val error = UnsupportedOperationException(
+            "Sign-in with ${provider.name} needs an OAuth client (e.g. AppAuth) configured for this app"
+        )
+        _authState.value = AuthState.Error(error.message!!)
+        return Result.failure(error)
     }
     
     /**
@@ -176,34 +137,25 @@ class AuthenticationService {
                     )
                 }
                 
-                // Stub: In actual implementation, would call Auth0 API
-                // val auth0 = Auth0(clientId, domain)
-                // val result = auth0.signup(email, password, name)
-                
-                delay(500)
-                
+                val accounts = loadAccounts().toMutableMap()
+                if (email.lowercase() in accounts) {
+                    return@withContext Result.failure(IllegalStateException("An account for $email already exists"))
+                }
+                val salt = ByteArray(16).also { SecureRandom().nextBytes(it) }
                 val user = User(
                     id = UUID.randomUUID().toString(),
                     email = email,
                     name = name,
                     createdAt = System.currentTimeMillis()
                 )
-                
-                sessionToken = generateToken()
-                refreshToken = generateToken()
-                
-                saveSession(
-                    Session(
-                        user = user,
-                        accessToken = sessionToken!!,
-                        refreshToken = refreshToken!!,
-                        expiresAt = System.currentTimeMillis() + (24 * 60 * 60 * 1000)
-                    )
+                accounts[email.lowercase()] = StoredAccount(
+                    id = user.id, email = email, name = name, createdAt = user.createdAt,
+                    salt = Base64.getEncoder().encodeToString(salt),
+                    hash = Base64.getEncoder().encodeToString(hash(password, salt))
                 )
+                saveAccounts(accounts)
                 
-                _currentUser.value = user
-                _authState.value = AuthState.Authenticated(user)
-                
+                startSession(user)
                 Result.success(user)
             } catch (e: Exception) {
                 _authState.value = AuthState.Error(e.message ?: "Sign up failed")
@@ -252,25 +204,8 @@ class AuthenticationService {
     /**
      * Authenticate with biometrics
      */
-    suspend fun authenticateWithBiometrics(): Result<Unit> {
-        return withContext(Dispatchers.Main) {
-            try {
-                // Stub: In actual implementation, would use BiometricPrompt
-                // val biometricPrompt = BiometricPrompt(activity, executor, callback)
-                // val promptInfo = BiometricPrompt.PromptInfo.Builder()
-                //     .setTitle("Authenticate with Layla")
-                //     .setSubtitle("Use your fingerprint or face")
-                //     .setNegativeButtonText("Cancel")
-                //     .build()
-                // biometricPrompt.authenticate(promptInfo)
-                
-                delay(500)
-                Result.success(Unit)
-            } catch (e: Exception) {
-                Result.failure(e)
-            }
-        }
-    }
+    suspend fun authenticateWithBiometrics(): Result<Unit> =
+        Result.failure(UnsupportedOperationException("Biometric authentication needs an Activity-hosted BiometricPrompt"))
     
     /**
      * Shutdown the service
@@ -281,54 +216,67 @@ class AuthenticationService {
     
     // Private helper methods
     
+    private fun hash(password: String, salt: ByteArray): ByteArray =
+        SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
+            .generateSecret(PBEKeySpec(password.toCharArray(), salt, 120_000, 256)).encoded
+    
+    private fun loadAccounts(): Map<String, StoredAccount> =
+        if (accountsFile.isFile) json.decodeFromString<Map<String, StoredAccount>>(accountsFile.readText()) else emptyMap()
+    
+    private fun saveAccounts(accounts: Map<String, StoredAccount>) {
+        storageDir.mkdirs()
+        accountsFile.writeText(json.encodeToString(accounts))
+    }
+    
+    private fun startSession(user: User) {
+        sessionToken = generateToken()
+        refreshToken = generateToken()
+        saveSession(
+            Session(
+                user = user,
+                accessToken = sessionToken!!,
+                refreshToken = refreshToken!!,
+                expiresAt = System.currentTimeMillis() + (24 * 60 * 60 * 1000) // 24 hours
+            )
+        )
+        _currentUser.value = user
+        _authState.value = AuthState.Authenticated(user)
+    }
+    
     private fun loadSavedSession(): Session? {
-        // Stub: Would load from secure storage (EncryptedSharedPreferences)
-        return null
+        if (!sessionFile.isFile) return null
+        val stored = json.decodeFromString<StoredSession>(sessionFile.readText())
+        val account = loadAccounts().values.firstOrNull { it.id == stored.userId } ?: return null
+        return Session(
+            user = User(id = account.id, email = account.email, name = account.name, createdAt = account.createdAt),
+            accessToken = stored.accessToken,
+            refreshToken = stored.refreshToken,
+            expiresAt = stored.expiresAt
+        )
     }
     
     private fun saveSession(session: Session) {
-        // Stub: Would save to secure storage (EncryptedSharedPreferences)
+        storageDir.mkdirs()
+        sessionFile.writeText(json.encodeToString(StoredSession(session.user.id, session.accessToken, session.refreshToken, session.expiresAt)))
     }
     
     private fun clearSavedSession() {
-        // Stub: Would clear from secure storage
+        sessionFile.delete()
     }
     
     private fun validateSession(session: Session): Boolean {
         return session.expiresAt > System.currentTimeMillis()
     }
     
-    private suspend fun refreshSession(session: Session) {
-        // Stub: Would call Auth0 refresh token API
-        try {
-            delay(500)
-            
-            sessionToken = generateToken()
-            
-            val refreshedSession = session.copy(
-                accessToken = sessionToken!!,
-                expiresAt = System.currentTimeMillis() + (24 * 60 * 60 * 1000)
-            )
-            
-            saveSession(refreshedSession)
-            _currentUser.value = session.user
-            _authState.value = AuthState.Authenticated(session.user)
-        } catch (e: Exception) {
-            _authState.value = AuthState.Unauthenticated
-        }
+    /** Expired local sessions require signing in again. */
+    private fun refreshSession(session: Session) {
+        clearSavedSession()
+        _authState.value = AuthState.Unauthenticated
     }
     
     private fun generateToken(): String {
-        val random = UUID.randomUUID().toString()
-        val bytes = random.toByteArray()
-        val digest = MessageDigest.getInstance("SHA-256")
-        val hash = digest.digest(bytes)
-        return hash.joinToString("") { "%02x".format(it) }
-    }
-    
-    private fun extractNameFromEmail(email: String): String {
-        return email.substringBefore("@").replace(".", " ").split(" ")
-            .joinToString(" ") { it.capitalize() }
+        val bytes = ByteArray(32).also { SecureRandom().nextBytes(it) }
+        return bytes.joinToString("") { "%02x".format(it) }
     }
     
     private fun isValidEmail(email: String): Boolean {

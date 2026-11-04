@@ -15,15 +15,17 @@ import org.ninelym.aid.driver.*
 import org.ninelym.aid.hub.*
 import org.ninelym.aid.endpoint.*
 import org.ninelym.aid.persona.*
+import org.ninelym.llm.LanguageModel
+import org.ninelym.llm.LanguageModels
 
 /**
  * Adapter for wrapping any service as an AID endpoint
  */
 abstract class ServiceAdapter<T>(
     private val service: T,
-    override val endpointName: String,
-    override val endpointDescription: String,
-    override val endpointCapabilities: Set<ServiceCapability>
+    endpointName: String,
+    endpointDescription: String,
+    endpointCapabilities: Set<ServiceCapability>
 ) : BaseEndpointAdapter(endpointName, endpointDescription, endpointCapabilities) {
 
     /**
@@ -144,11 +146,15 @@ fun createServiceAdapter(
 class LegacyCharacterAdapter(
     private val name: String,
     private val personalityTraits: Map<String, Float>,
+    /** Descriptions of the legacy character's voice (not lines to say). */
     private val responseTemplates: List<String> = emptyList(),
-    private val emotionalResponses: Map<String, Float> = emptyMap()
+    private val emotionalResponses: Map<String, Float> = emptyMap(),
+    modelProvider: () -> Result<LanguageModel> = { LanguageModels.current() }
 ) : PersonaDriver {
 
     private val _spec: PersonaSpec = createSpecFromLegacy()
+    // Legacy templates live on as speech-pattern style hints; the reply comes from the model
+    private val generator = BasePersonaDriver(_spec, modelProvider)
     private var _state: PersonaState = PersonaState(specId = _spec.id, currentTensor = _spec.toTensor())
 
     override val spec: PersonaSpec get() = _spec
@@ -164,16 +170,11 @@ class LegacyCharacterAdapter(
         inputTensor: AIDTensor,
         context: Map<String, Any>
     ): AIDResult<PersonaOutput> {
-        val modulatedTensor = modulate(inputTensor)
-        val processedContent = applyLegacyPatterns(input)
-
-        val output = PersonaOutput(
-            content = processedContent,
-            tensor = modulatedTensor,
-            emotionalState = _state.emotionalState
-        )
-
-        return AIDResult.Success(output)
+        generator.updateMemory(_state.memoryContext)
+        return when (val generated = generator.process(input, inputTensor, context)) {
+            is AIDResult.Success -> AIDResult.Success(generated.data.copy(emotionalState = _state.emotionalState))
+            else -> generated
+        }
     }
 
     override fun modulate(tensor: AIDTensor): AIDTensor {
@@ -219,18 +220,6 @@ class LegacyCharacterAdapter(
             responseTemplates = responseTemplates
         )
     }
-
-    private fun applyLegacyPatterns(input: String): String {
-        if (responseTemplates.isEmpty()) return input
-
-        // Apply legacy response templates if available
-        val template = responseTemplates.randomOrNull()
-        return if (template != null && Math.random() < 0.3) {
-            "$template $input"
-        } else {
-            input
-        }
-    }
 }
 
 /**
@@ -261,11 +250,7 @@ object LegacyCharacterFactory {
                 "patience" to 0.9f,
                 "knowledge" to 0.85f
             ),
-            templates = listOf(
-                "I'd be happy to help with that!",
-                "Let me assist you.",
-                "Of course!"
-            )
+            templates = listOf("warm and eager to help", "polite, clear and reassuring")
         )
     }
 
@@ -281,11 +266,7 @@ object LegacyCharacterFactory {
                 "playfulness" to 0.8f,
                 "expressiveness" to 0.85f
             ),
-            templates = listOf(
-                "Ooh, that's interesting!",
-                "Let's explore this together!",
-                "How creative!"
-            )
+            templates = listOf("enthusiastic about ideas", "invites the user to explore together")
         )
     }
 
@@ -301,11 +282,7 @@ object LegacyCharacterFactory {
                 "analytical" to 0.9f,
                 "objectivity" to 0.85f
             ),
-            templates = listOf(
-                "Analyzing the data...",
-                "From a logical perspective,",
-                "The evidence suggests"
-            )
+            templates = listOf("measured and analytical", "frames answers in terms of evidence and logic")
         )
     }
 
@@ -323,11 +300,7 @@ object LegacyCharacterFactory {
                 "noActualHarm" to 1.0f,
                 "respectBoundaries" to 1.0f
             ),
-            templates = listOf(
-                "Ehehe~",
-                "Ooh!",
-                "How cute~"
-            )
+            templates = listOf("bubbly, giggling interjections", "delights in anything cute")
         )
     }
 }

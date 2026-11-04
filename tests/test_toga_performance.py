@@ -4,17 +4,18 @@ Tests for Toga Performance Module
 
 import time
 import unittest
+
 from python.helpers.toga_performance import (
+    BatchProcessor,
+    LazyEvaluator,
     PerformanceMonitor,
-    get_performance_monitor,
-    timed,
     TraitCache,
     cached_trait_calculation,
     get_memory_usage,
-    BatchProcessor,
-    optimize_string_operations,
-    LazyEvaluator,
     get_or_compile_pattern,
+    get_performance_monitor,
+    optimize_string_operations,
+    timed,
 )
 
 
@@ -105,6 +106,7 @@ class TestTimedDecorator(unittest.TestCase):
             return "result"
 
         import python.helpers.toga_performance as perf_module
+
         original_monitor = perf_module._global_monitor
         perf_module._global_monitor = monitor
 

@@ -20,12 +20,13 @@ data class Atom(
         return org.ninelym.cognitive.CognitiveTensor(
             modality = type.modalityWeight,
             depth = type.hierarchyDepth,
-            context = truthValue.confidence,
-            salience = attentionValue.sti,
-            autonomyIndex = attentionValue.lti,
-            valence = if (truthValue.strength > 0.5f) truthValue.strength else 1.0f - truthValue.strength,
-            arousal = attentionValue.totalImportance() / 2.0f,
-            confidence = truthValue.confidence,
+            // ECAN importance is unbounded; the tensor representation is normalised to [0, 1]
+            context = truthValue.confidence.coerceIn(0f, 1f),
+            salience = attentionValue.sti.coerceIn(0f, 1f),
+            autonomyIndex = attentionValue.lti.coerceIn(0f, 1f),
+            valence = (if (truthValue.strength > 0.5f) truthValue.strength else 1.0f - truthValue.strength).coerceIn(0f, 1f),
+            arousal = (attentionValue.totalImportance() / 2.0f).coerceIn(0f, 1f),
+            confidence = truthValue.confidence.coerceIn(0f, 1f),
             complexity = type.hierarchyDepth / 4.0f // Normalize to 0-1 range
         )
     }

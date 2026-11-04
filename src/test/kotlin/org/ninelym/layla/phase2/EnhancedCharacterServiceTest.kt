@@ -2,11 +2,13 @@ package org.ninelym.layla.phase2
 
 import org.ninelym.layla.character.EnhancedCharacterService
 import org.ninelym.layla.character.Expression
-import org.ninelym.layla.character.Sentiment
 import kotlinx.coroutines.runBlocking
 import org.junit.Test
 import org.junit.Before
 import org.junit.Assert.*
+import org.junit.Assume.assumeTrue
+import org.ninelym.llm.ModelEndpointConfig
+import org.ninelym.llm.OpenAICompatibleModel
 
 /**
  * Test suite for Enhanced Character Service
@@ -15,20 +17,27 @@ import org.junit.Assert.*
 class EnhancedCharacterServiceTest {
     
     private lateinit var service: EnhancedCharacterService
+    private val config = ModelEndpointConfig.fromEnvironment()
     
     @Before
     fun setup() {
-        service = EnhancedCharacterService()
+        // Expressions are chosen by the served model (TOGAI_LLM_*); model-dependent tests skip without one
+        service = EnhancedCharacterService(modelProvider = {
+            config?.let { Result.success(OpenAICompatibleModel(it)) }
+                ?: Result.failure(org.ninelym.llm.ModelNotConfiguredException())
+        })
     }
     
+    private fun requireModel() = assumeTrue("no live model configured", config != null)
+    
     @Test
-    fun `test service initialization`() = runBlocking {
+    fun `test service initialization`(): Unit = runBlocking {
         val result = service.initialize()
         assertTrue("Service should initialize successfully", result.isSuccess)
     }
     
     @Test
-    fun `test set active character`() = runBlocking {
+    fun `test set active character`(): Unit = runBlocking {
         service.initialize()
         
         val result = service.setActiveCharacter("creative")
@@ -39,7 +48,7 @@ class EnhancedCharacterServiceTest {
     }
     
     @Test
-    fun `test set character expression`() = runBlocking {
+    fun `test set character expression`(): Unit = runBlocking {
         service.initialize()
         service.setActiveCharacter("assistant")
         
@@ -48,25 +57,21 @@ class EnhancedCharacterServiceTest {
     }
     
     @Test
-    fun `test generate expression from sentiment`() = runBlocking {
+    fun `test model chooses expression for a line`(): Unit = runBlocking {
+        requireModel()
         service.initialize()
         
         val expression = service.generateExpression(
             characterId = "assistant",
-            messageContext = "Great job on completing the task!",
-            sentiment = Sentiment.POSITIVE
+            spokenText = "Great job on completing the task!"
         )
         
-        assertNotNull("Expression should be generated", expression)
-        // Expression should be positive (HAPPY or NEUTRAL)
-        assertTrue(
-            "Expression should be positive",
-            expression == Expression.HAPPY || expression == Expression.NEUTRAL
-        )
+        assertTrue("The model should name one of the expressions", expression.isSuccess)
     }
     
     @Test
-    fun `test sync expression with speech`() = runBlocking {
+    fun `test sync expression with speech`(): Unit = runBlocking {
+        requireModel()
         service.initialize()
         service.setActiveCharacter("creative")
         
@@ -79,7 +84,7 @@ class EnhancedCharacterServiceTest {
     }
     
     @Test
-    fun `test get personality traits`() = runBlocking {
+    fun `test get personality traits`(): Unit = runBlocking {
         service.initialize()
         
         val traits = service.getPersonalityTraits("assistant")
@@ -89,7 +94,7 @@ class EnhancedCharacterServiceTest {
     }
     
     @Test
-    fun `test update personality trait`() = runBlocking {
+    fun `test update personality trait`(): Unit = runBlocking {
         service.initialize()
         
         val result = service.updatePersonalityTrait(
@@ -105,7 +110,7 @@ class EnhancedCharacterServiceTest {
     }
     
     @Test
-    fun `test get available characters`() = runBlocking {
+    fun `test get available characters`(): Unit = runBlocking {
         service.initialize()
         
         val characters = service.getAvailableCharacters()
@@ -118,34 +123,14 @@ class EnhancedCharacterServiceTest {
     }
     
     @Test
-    fun `test expression generation for different sentiments`() = runBlocking {
-        service.initialize()
-        
-        val positiveExpr = service.generateExpression(
-            "creative",
-            "This is wonderful!",
-            Sentiment.POSITIVE
-        )
-        
-        val negativeExpr = service.generateExpression(
-            "creative",
-            "This is unfortunate",
-            Sentiment.NEGATIVE
-        )
-        
-        val neutralExpr = service.generateExpression(
-            "analyst",
-            "Let me analyze this",
-            Sentiment.NEUTRAL
-        )
-        
-        assertNotNull("Positive expression should be generated", positiveExpr)
-        assertNotNull("Negative expression should be generated", negativeExpr)
-        assertNotNull("Neutral expression should be generated", neutralExpr)
+    fun `test expression fails without a model instead of guessing`(): Unit = runBlocking {
+        val offline = EnhancedCharacterService(modelProvider = { Result.failure(org.ninelym.llm.ModelNotConfiguredException()) })
+        offline.initialize()
+        assertTrue(offline.generateExpression("creative", "This is wonderful!").isFailure)
     }
     
     @Test
-    fun `test character-specific personality traits`() = runBlocking {
+    fun `test character-specific personality traits`(): Unit = runBlocking {
         service.initialize()
         
         val creativeTraits = service.getPersonalityTraits("creative")
@@ -165,7 +150,7 @@ class EnhancedCharacterServiceTest {
     }
     
     @Test
-    fun `test expression without initialization fails`() = runBlocking {
+    fun `test expression without initialization fails`(): Unit = runBlocking {
         val result = service.setExpression("assistant", Expression.HAPPY)
         assertTrue("Setting expression without initialization should fail", result.isFailure)
     }

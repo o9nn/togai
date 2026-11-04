@@ -1,5 +1,9 @@
 package org.ninelym.layla.taskmgr
 
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import java.util.concurrent.ConcurrentHashMap
 import java.util.PriorityQueue
 
@@ -169,11 +173,27 @@ class EnhancedTaskManagerService {
     /**
      * Process task queue
      */
+    private val processorScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default + kotlinx.coroutines.SupervisorJob())
+    
     private suspend fun startTaskProcessor() {
+        if (isProcessing) return
         isProcessing = true
         
-        // In production, this would run in a separate coroutine/thread
-        // For now, we just mark it as started
+        // Poll the queue and run tasks whose time has come
+        processorScope.launch {
+            while (isActive && isProcessing) {
+                processNextTask()
+                delay(250)
+            }
+        }
+    }
+    
+    /**
+     * Stop processing queued tasks
+     */
+    fun shutdown() {
+        isProcessing = false
+        processorScope.cancel()
     }
     
     /**
@@ -183,9 +203,10 @@ class EnhancedTaskManagerService {
         val now = System.currentTimeMillis()
         
         // Get tasks ready to execute
-        val readyTasks = taskQueue
-            .filter { it.executeAfter <= now }
-            .take(maxConcurrentTasks)
+        val readyTasks = synchronized(taskQueue) {
+            taskQueue.filter { it.executeAfter <= now && it.status == TaskExecutionStatus.QUEUED }
+                .take(maxConcurrentTasks)
+        }
         
         readyTasks.forEach { task ->
             executeTask(task)

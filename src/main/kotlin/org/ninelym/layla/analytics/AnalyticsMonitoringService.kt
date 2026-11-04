@@ -43,11 +43,7 @@ class AnalyticsMonitoringService {
      * Track user event (privacy-respecting)
      */
     fun trackEvent(eventName: String, properties: Map<String, String> = emptyMap()) {
-        if (!privacyMode) {
-            // In non-privacy mode, could send to analytics service
-            // For now, just log locally
-        }
-        
+        // Events stay on the device; nothing is sent to an external analytics service
         recordEvent(AnalyticsEvent(
             eventType = EventType.USER_ACTION,
             eventName = eventName,

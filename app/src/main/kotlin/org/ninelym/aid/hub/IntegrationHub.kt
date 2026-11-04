@@ -33,6 +33,8 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.ninelym.aid.core.*
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.concurrent.ConcurrentHashMap
 import java.util.UUID
 
@@ -360,15 +362,10 @@ class IntegrationHub : IntegrationHubInterface {
             ?.toSet()
             ?: emptySet()
 
-        // Create a simple proxy handler for dynamic registration
-        val handler = object : EndpointHandler {
-            override suspend fun initialize() = AIDResult.Success(Unit)
-            override suspend fun handle(request: EndpointRequest, tensor: AIDTensor): AIDResult<Any> {
-                return AIDResult.Success(mapOf("proxied" to true, "request" to request))
-            }
-            override fun getHealth() = EndpointHealth(true, EndpointState.READY)
-            override suspend fun shutdown() {}
-        }
+        // Dynamically registered endpoints are remote services reached over HTTP
+        val url = payload["url"] as? String
+            ?: return AIDResult.Error(AIDErrorCode.INVALID_REQUEST, "Endpoint url required for dynamic registration")
+        val handler = HttpProxyEndpointHandler(url)
 
         return registerEndpoint(name, description, capabilities, handler)
     }
@@ -629,6 +626,28 @@ class IntegrationHub : IntegrationHubInterface {
     }
 
     /**
+     * Invoke an endpoint by its registered name with explicit parameters.
+     */
+    suspend fun invokeByName(
+        name: String,
+        action: String,
+        parameters: Map<String, Any> = emptyMap(),
+        tensor: AIDTensor = AIDTensor.neutral()
+    ): AIDResult<Any> {
+        val endpoint = endpoints.values.firstOrNull { it.name == name }
+            ?: return AIDResult.Error(AIDErrorCode.ENDPOINT_NOT_AVAILABLE, "Endpoint not found: $name")
+        val handler = handlers[endpoint.id]
+            ?: return AIDResult.Error(AIDErrorCode.ENDPOINT_NOT_AVAILABLE, "Handler not found for endpoint: $name")
+        return handler.handle(EndpointRequest(action = action, payload = parameters, parameters = parameters), tensor)
+    }
+
+    /**
+     * Current health reported by every registered endpoint, keyed by name.
+     */
+    fun endpointHealth(): Map<String, EndpointHealth> =
+        endpoints.values.mapNotNull { e -> handlers[e.id]?.let { e.name to it.getHealth() } }.toMap()
+
+    /**
      * Direct endpoint invocation (convenience method)
      */
     suspend fun invoke(
@@ -642,5 +661,66 @@ class IntegrationHub : IntegrationHubInterface {
 
         val request = EndpointRequest(action = action, payload = payload)
         return handler.handle(request, tensor)
+    }
+}
+
+/**
+ * Handler for a dynamically registered remote endpoint: each request is POSTed to [url] as
+ * `{"action": ..., "parameters": {...}}` and the JSON (or text) response is returned.
+ */
+class HttpProxyEndpointHandler(
+    private val url: String,
+    private val http: okhttp3.OkHttpClient = okhttp3.OkHttpClient()
+) : EndpointHandler {
+    @Volatile private var lastError: String? = null
+
+    override suspend fun initialize(): AIDResult<Unit> = AIDResult.Success(Unit)
+
+    override suspend fun handle(request: EndpointRequest, tensor: AIDTensor): AIDResult<Any> = withContext(Dispatchers.IO) {
+        val body = kotlinx.serialization.json.buildJsonObject {
+            put("action", kotlinx.serialization.json.JsonPrimitive(request.action))
+            put("parameters", toJson(request.parameters))
+        }.toString()
+        val call = okhttp3.Request.Builder().url(url)
+            .post(body.toRequestBody(jsonType))
+            .build()
+        try {
+            http.newCall(call).execute().use { response ->
+                val text = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    lastError = "HTTP ${response.code}"
+                    return@withContext AIDResult.Error(AIDErrorCode.INTEGRATION_HUB_ERROR, "Remote endpoint returned HTTP ${response.code}: ${text.take(300)}")
+                }
+                lastError = null
+                val parsed = runCatching { kotlinx.serialization.json.Json.parseToJsonElement(text) }.getOrNull()
+                AIDResult.Success(parsed ?: text)
+            }
+        } catch (e: java.io.IOException) {
+            lastError = e.message
+            AIDResult.Error(AIDErrorCode.ENDPOINT_NOT_AVAILABLE, "Remote endpoint unreachable: ${e.message}", e)
+        }
+    }
+
+    override fun getHealth() = EndpointHealth(
+        healthy = lastError == null,
+        state = if (lastError == null) EndpointState.READY else EndpointState.ERROR
+    )
+
+    override suspend fun shutdown() {}
+
+    private companion object {
+        val jsonType = "application/json".toMediaType()
+
+        fun toJson(value: Any?): kotlinx.serialization.json.JsonElement = when (value) {
+            null -> kotlinx.serialization.json.JsonNull
+            is kotlinx.serialization.json.JsonElement -> value
+            is String -> kotlinx.serialization.json.JsonPrimitive(value)
+            is Number -> kotlinx.serialization.json.JsonPrimitive(value)
+            is Boolean -> kotlinx.serialization.json.JsonPrimitive(value)
+            is Map<*, *> -> kotlinx.serialization.json.JsonObject(value.entries.associate { it.key.toString() to toJson(it.value) })
+            is Iterable<*> -> kotlinx.serialization.json.JsonArray(value.map { toJson(it) })
+            is Array<*> -> kotlinx.serialization.json.JsonArray(value.map { toJson(it) })
+            else -> kotlinx.serialization.json.JsonPrimitive(value.toString())
+        }
     }
 }

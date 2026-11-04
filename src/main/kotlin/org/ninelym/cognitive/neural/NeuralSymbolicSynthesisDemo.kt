@@ -38,7 +38,7 @@ object NeuralSymbolicSynthesisDemo {
             println("🚀 Initializing Neural-Symbolic Kernel...")
             val initialized = kernel.initialize(GgmlBackend.CPU)
             if (!initialized) {
-                println("❌ Failed to initialize kernel - running in simulation mode")
+                println("❌ Failed to initialize kernel - native kernel unavailable")
                 runSimulationMode()
                 return
             }
@@ -73,7 +73,7 @@ object NeuralSymbolicSynthesisDemo {
             
         } catch (e: Exception) {
             println("❌ Demo failed with exception: ${e.message}")
-            println("Running simulation mode instead...")
+            println("Native kernel unavailable.")
             runSimulationMode()
         }
     }
@@ -200,55 +200,9 @@ object NeuralSymbolicSynthesisDemo {
      * Run simulation mode when native libraries are not available
      */
     private fun runSimulationMode() {
-        println("🔄 Running in Simulation Mode")
-        println("-".repeat(30))
-        
-        // Simulate kernel operations
-        println("✅ 3.1 Kernel Customization (Simulated)")
-        println("  • Neural-symbolic fusion: tensor signature [atoms, confidence, features]")
-        println("    -> [modality=0.45, depth=0.85, context=0.67, salience=0.72, autonomy=0.58]")
-        println("  • Tensor operations: FORWARD, BACKWARD, ATTENTION, SYMBOLIC_REASONING")
-        println("  • Batch processing: 4 tensors processed with attention pooling")
-        println()
-        
-        println("✅ 3.2 Tensor Benchmarking (Simulated)")
-        println("  • Neural-symbolic fusion: 15.2 ms avg, 65.8 ops/sec")
-        println("  • Tensor inference: 2.3 ms avg, 434.8 ops/sec")
-        println("  • Batch processing: 8.7 ms avg, 46.0 tensors/sec")
-        println("  • Memory usage: 12.4 MB peak")
-        println("  • Recommendation: Consider GPU acceleration for better performance")
-        println()
-        
-        println("✅ 3.3 End-to-End Verification (Simulated)")
-        println("  • Total tests: 18")
-        println("  • Passed: 16")
-        println("  • Failed: 2")
-        println("  • Success rate: 88.9%")
-        println("  • Critical tests: All passed")
-        println("  • Recommendation: Review integration with existing cognitive system components")
-        println()
-        
-        println("📊 Tensor Signature Validation:")
-        println("  • [atoms, confidence, features] mapping verified")
-        println("  • Tensor dimensions: 5 (modality, depth, context, salience, autonomy_index)")
-        println("  • Value ranges: All within [0.0, 1.0] except depth which allows > 1.0")
-        println("  • Attention mechanism: Preserved from symbolic atoms")
-        println()
-        
-        println("🎯 Phase 3 Implementation Summary:")
-        println("  ✅ 3.1 Custom ggml kernel bridge created")
-        println("  ✅ 3.2 Comprehensive benchmarking framework implemented")
-        println("  ✅ 3.3 End-to-end verification system integrated")
-        println("  ✅ Tensor signature [atoms, confidence, features] fully supported")
-        println("  ✅ Neural-symbolic synthesis operational")
-        
-        println()
-        println("🏗️ Architecture Integration:")
-        println("  • Utilizes existing ggml native libraries (11 variants)")
-        println("  • Integrates with CognitiveTensor system")
-        println("  • Compatible with TensorFragmentProcessor")
-        println("  • Extends ECAN attention allocation")
-        println("  • Preserves hypergraph symbolic reasoning")
+        // No numbers are reported without the native kernel actually running
+        println("⚠️  The native neural-symbolic kernel is not available; no kernel, benchmark or")
+        println("   verification results can be produced. Package the ggml native library to run this demo.")
     }
 }
 

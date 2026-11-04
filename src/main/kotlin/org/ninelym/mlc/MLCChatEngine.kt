@@ -3,8 +3,14 @@ package org.ninelym.mlc
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import java.io.File
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.atomic.AtomicBoolean
+import org.ninelym.llm.GenerationOptions
+import org.ninelym.llm.LanguageModel
+import org.ninelym.llm.LanguageModels
+import org.ninelym.llm.OpenAICompatibleModel
+import org.ninelym.llm.ChatMessage as LlmMessage
 
 /**
  * MLC Chat Engine
@@ -98,9 +104,15 @@ data class MLCAppConfig(
 )
 
 /**
- * MLC Chat Engine implementation
+ * MLC Chat Engine implementation.
+ *
+ * The compiled MLC/TVM runtime is not packaged in this build, so generation is delegated to the
+ * configured [LanguageModel] (a locally served model, e.g. MLC's own OpenAI-compatible
+ * `mlc_llm serve`, llama.cpp server or Ollama). [MLCModelConfig.modelPath] names the served model.
  */
-class MLCChatEngine {
+class MLCChatEngine(
+    private val modelProvider: () -> Result<LanguageModel> = { LanguageModels.current() }
+) {
 
     private val _modelInitState = MutableStateFlow(ModelInitState.UNINITIALIZED)
     val modelInitState: StateFlow<ModelInitState> = _modelInitState
@@ -115,8 +127,7 @@ class MLCChatEngine {
     private var currentConfig: MLCModelConfig? = null
     private var scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
-    // Native chat module handle (when using actual MLC)
-    private var nativeHandle: Long = 0
+    private var model: LanguageModel? = null
 
     /**
      * Load and initialize model
@@ -131,12 +142,25 @@ class MLCChatEngine {
                 return@withContext Result.failure(Exception("Model path is empty"))
             }
 
-            // In production, this would call native MLC initialization
-            // For now, we simulate the loading
+            if (File(config.modelPath).exists()) {
+                _modelInitState.value = ModelInitState.FAILED
+                return@withContext Result.failure(Exception(
+                    "The MLC native runtime isn't packaged; serve ${config.modelPath} (e.g. with `mlc_llm serve`) " +
+                        "and configure its endpoint instead"))
+            }
+            val base = modelProvider().getOrThrow()
+            val selected = (base as? OpenAICompatibleModel)
+                ?.let { OpenAICompatibleModel(it.config.copy(model = config.modelPath)) }
+                ?: base.takeIf { it.modelId == config.modelPath }
+                ?: throw Exception("Model ${config.modelPath} is not available from the configured provider")
+            if (selected is OpenAICompatibleModel) {
+                val served = selected.listModels().getOrThrow()
+                if (served.isNotEmpty() && selected.modelId !in served) {
+                    throw Exception("Model ${selected.modelId} is not served by ${selected.config.baseUrl} (serving: $served)")
+                }
+            }
+            model = selected
             currentConfig = config
-
-            // Simulate model loading delay
-            delay(100)
 
             _modelInitState.value = ModelInitState.READY
             _chatState.value = ModelChatState.READY
@@ -176,11 +200,10 @@ class MLCChatEngine {
             // Add user message
             conversationHistory.add(ChatMessage(MessageRole.USER, message))
 
-            // Build prompt from conversation history
-            val prompt = buildPrompt()
-
-            // Generate response (simulated - would call native MLC)
-            val response = generateResponse(prompt, params, onToken)
+            val response = generateResponse(params, onToken).getOrElse {
+                conversationHistory.removeAt(conversationHistory.lastIndex)
+                throw it
+            }
 
             // Add assistant response to history
             conversationHistory.add(ChatMessage(MessageRole.ASSISTANT, response))
@@ -195,42 +218,32 @@ class MLCChatEngine {
         }
     }
 
-    private fun buildPrompt(): String {
-        val sb = StringBuilder()
-
-        for (msg in conversationHistory) {
-            when (msg.role) {
-                MessageRole.SYSTEM -> sb.append("<|im_start|>system\n${msg.content}<|im_end|>\n")
-                MessageRole.USER -> sb.append("<|im_start|>user\n${msg.content}<|im_end|>\n")
-                MessageRole.ASSISTANT -> sb.append("<|im_start|>assistant\n${msg.content}<|im_end|>\n")
-            }
-        }
-
-        sb.append("<|im_start|>assistant\n")
-        return sb.toString()
-    }
-
     private suspend fun generateResponse(
-        prompt: String,
         params: MLCGenerationParams,
         onToken: ((String) -> Unit)?
-    ): String {
-        // Simulated generation - in production would call native MLC
-        val response = StringBuilder()
-        val simulatedTokens = listOf(
-            "I", "'m", " here", " to", " help", " you", ".",
-            " How", " can", " I", " assist", " you", " today", "?"
-        )
-
-        for (token in simulatedTokens) {
-            if (!isGenerating.get()) break
-
-            response.append(token)
-            onToken?.invoke(token)
-            delay(50) // Simulate token generation time
+    ): Result<String> {
+        val activeModel = model ?: return Result.failure(Exception("Model not loaded"))
+        val messages = conversationHistory.map {
+            when (it.role) {
+                MessageRole.SYSTEM -> LlmMessage.system(it.content)
+                MessageRole.USER -> LlmMessage.user(it.content)
+                MessageRole.ASSISTANT -> LlmMessage.assistant(it.content)
+            }
         }
-
-        return response.toString()
+        val options = GenerationOptions(
+            temperature = params.temperature,
+            topP = params.topP,
+            maxTokens = params.maxTokens,
+            stop = params.stopSequences
+        )
+        return coroutineScope {
+            // stopGeneration() cancels the in-flight request
+            val job = async { activeModel.chat(messages, options, onToken) }
+            val watcher = launch { while (isGenerating.get()) delay(50); job.cancel() }
+            try { job.await() } catch (e: CancellationException) {
+                Result.failure(Exception("Generation stopped"))
+            } finally { watcher.cancel() }
+        }
     }
 
     /**
@@ -277,7 +290,7 @@ class MLCChatEngine {
         conversationHistory.clear()
         messageQueue.clear()
         currentConfig = null
-        nativeHandle = 0
+        model = null
         _modelInitState.value = ModelInitState.UNINITIALIZED
         _chatState.value = ModelChatState.IDLE
     }

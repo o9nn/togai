@@ -2,7 +2,22 @@ package org.ninelym.layla.cloud
 
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.ninelym.llm.GenerationOptions
+import org.ninelym.llm.LanguageModel
+import org.ninelym.llm.LanguageModels
+import org.ninelym.llm.ask
+import javax.crypto.Cipher
+import javax.crypto.KeyGenerator
+import javax.crypto.SecretKey
+import javax.crypto.spec.GCMParameterSpec
 
 /**
  * Cloud Sync Service
@@ -23,7 +38,14 @@ import kotlinx.coroutines.flow.asStateFlow
  * Privacy Note: This service is entirely optional and disabled by default.
  * All data is encrypted before leaving the device.
  */
-class CloudSyncService {
+class CloudSyncService(
+    /** Base URL of a key/value sync server (`GET`/`PUT {serverUrl}/{userId}/{dataType}`). */
+    private val serverUrl: String? = null,
+    private val http: okhttp3.OkHttpClient = okhttp3.OkHttpClient(),
+    /** Resolves MERGE conflicts by asking the language model to reconcile both versions. */
+    private val modelProvider: () -> Result<LanguageModel> = { LanguageModels.current() },
+    private val encryptionKey: SecretKey = KeyGenerator.getInstance("AES").apply { init(256) }.generateKey()
+) {
     
     // State flows for reactive updates
     private val _syncState = MutableStateFlow<SyncState>(SyncState.DISCONNECTED)
@@ -39,7 +61,16 @@ class CloudSyncService {
     val lastSyncTime: StateFlow<Long?> = _lastSyncTime.asStateFlow()
     
     private var syncEnabled = false
-    private val encryptionKey = generateEncryptionKey()
+    private var userId: String? = null
+    private var totalBytes = 0L
+    private val json = Json { ignoreUnknownKeys = true }
+    
+    /** Local copy of each data type, as last written or merged here. */
+    private val localData = java.util.concurrent.ConcurrentHashMap<SyncDataType, Map<String, String>>()
+    
+    /** Unresolved conflicts: id -> (type, key, local value, remote value). */
+    private data class Conflict(val dataType: SyncDataType, val key: String, val local: String, val remote: String)
+    private val conflicts = java.util.concurrent.ConcurrentHashMap<String, Conflict>()
     
     /**
      * Initialize cloud sync service
@@ -47,15 +78,15 @@ class CloudSyncService {
     suspend fun initialize(userId: String): Result<Unit> {
         return try {
             if (!syncEnabled) {
+                _syncState.value = SyncState.DISABLED
                 return Result.success(Unit) // Sync is disabled
             }
             
             _syncState.value = SyncState.CONNECTING
-            
-            // Placeholder: In production, connect to Firebase or custom backend
-            // Verify user authentication
-            // Establish secure connection
-            
+            val url = serverUrl ?: throw IllegalStateException("No sync server configured")
+            // Any HTTP answer means the server is reachable
+            withContext(Dispatchers.IO) { http.newCall(Request.Builder().url(url).get().build()).execute().close() }
+            this.userId = userId
             _syncState.value = SyncState.CONNECTED
             Result.success(Unit)
         } catch (e: Exception) {
@@ -75,31 +106,22 @@ class CloudSyncService {
     }
     
     /**
-     * Sync data to cloud
+     * Sync data to cloud: merges [data] into the local copy and uploads it encrypted
      */
     suspend fun syncToCloud(
         dataType: SyncDataType,
         data: Map<String, Any>
     ): Result<SyncResult> {
         return try {
-            if (!syncEnabled) {
-                return Result.failure(Exception("Cloud sync is disabled"))
-            }
-            
+            requireReady()
             _syncState.value = SyncState.SYNCING
             
-            // Encrypt data before sending
-            val encryptedData = encryptData(data)
-            
-            // Calculate diff from last sync
-            val diff = calculateDiff(dataType, data)
-            
-            // Upload diff to cloud
-            val result = uploadToCloud(dataType, diff, encryptedData)
+            val merged = (localData[dataType] ?: emptyMap()) + data.mapValues { it.value.toString() }
+            localData[dataType] = merged
+            val result = uploadToCloud(dataType, encryptData(merged))
             
             _lastSyncTime.value = System.currentTimeMillis()
             _syncState.value = SyncState.CONNECTED
-            
             Result.success(result)
         } catch (e: Exception) {
             _syncState.value = SyncState.ERROR
@@ -108,28 +130,18 @@ class CloudSyncService {
     }
     
     /**
-     * Sync data from cloud
+     * Sync data from cloud: downloads, decrypts and merges with the local copy
      */
     suspend fun syncFromCloud(dataType: SyncDataType): Result<Map<String, Any>> {
         return try {
-            if (!syncEnabled) {
-                return Result.failure(Exception("Cloud sync is disabled"))
-            }
-            
+            requireReady()
             _syncState.value = SyncState.SYNCING
             
-            // Download encrypted data from cloud
-            val encryptedData = downloadFromCloud(dataType)
-            
-            // Decrypt data
-            val decryptedData = decryptData(encryptedData)
-            
-            // Merge with local data (conflict resolution)
-            val mergedData = mergeData(dataType, decryptedData)
+            val remote = downloadFromCloud(dataType)?.let { decryptData(it) } ?: emptyMap()
+            val mergedData = mergeData(dataType, remote)
             
             _lastSyncTime.value = System.currentTimeMillis()
             _syncState.value = SyncState.CONNECTED
-            
             Result.success(mergedData)
         } catch (e: Exception) {
             _syncState.value = SyncState.ERROR
@@ -142,36 +154,26 @@ class CloudSyncService {
      */
     suspend fun performFullSync(): Result<FullSyncResult> {
         return try {
-            if (!syncEnabled) {
-                return Result.failure(Exception("Cloud sync is disabled"))
-            }
+            requireReady()
+            val synced = mutableListOf<SyncDataType>()
+            val failures = mutableListOf<String>()
             
-            _syncState.value = SyncState.SYNCING
-            
-            val results = mutableMapOf<SyncDataType, SyncResult>()
-            
-            // Sync each data type
             for (dataType in SyncDataType.values()) {
-                // Upload local changes
-                val uploadResult = syncToCloud(dataType, emptyMap()) // Placeholder
-                
-                // Download remote changes
+                // Pull remote changes, then push the merged local copy
                 val downloadResult = syncFromCloud(dataType)
-                
-                if (uploadResult.isSuccess && downloadResult.isSuccess) {
-                    results[dataType] = SyncResult(
-                        success = true,
-                        timestamp = System.currentTimeMillis()
-                    )
-                }
+                val uploadResult = downloadResult.fold(
+                    onSuccess = { syncToCloud(dataType, emptyMap()) },
+                    onFailure = { Result.failure(it) }
+                )
+                if (uploadResult.isSuccess) synced += dataType
+                else failures += "${dataType.name}: ${uploadResult.exceptionOrNull()?.message}"
             }
             
             _lastSyncTime.value = System.currentTimeMillis()
-            _syncState.value = SyncState.CONNECTED
-            
+            _syncState.value = if (failures.isEmpty()) SyncState.CONNECTED else SyncState.ERROR
             Result.success(FullSyncResult(
-                success = true,
-                syncedTypes = results.keys.toList(),
+                success = failures.isEmpty(),
+                syncedTypes = synced,
                 timestamp = System.currentTimeMillis()
             ))
         } catch (e: Exception) {
@@ -179,6 +181,11 @@ class CloudSyncService {
             Result.failure(e)
         }
     }
+    
+    /**
+     * Unresolved conflicts found while merging remote data, by id
+     */
+    fun getConflicts(): Map<String, Pair<String, String>> = conflicts.mapValues { it.value.local to it.value.remote }
     
     /**
      * Resolve sync conflict
@@ -189,21 +196,15 @@ class CloudSyncService {
         resolution: ConflictResolution
     ): Result<Unit> {
         return try {
-            when (resolution) {
-                ConflictResolution.USE_LOCAL -> {
-                    // Keep local version, push to cloud
-                    syncToCloud(dataType, emptyMap())
-                }
-                ConflictResolution.USE_REMOTE -> {
-                    // Keep remote version, pull from cloud
-                    syncFromCloud(dataType)
-                }
-                ConflictResolution.MERGE -> {
-                    // Attempt intelligent merge
-                    val merged = performIntelligentMerge(dataType, conflictId)
-                    syncToCloud(dataType, merged)
-                }
+            val conflict = conflicts[conflictId]?.takeIf { it.dataType == dataType }
+                ?: return Result.failure(IllegalArgumentException("No conflict $conflictId for $dataType"))
+            val value = when (resolution) {
+                ConflictResolution.USE_LOCAL -> conflict.local
+                ConflictResolution.USE_REMOTE -> conflict.remote
+                ConflictResolution.MERGE -> performIntelligentMerge(conflict)
             }
+            syncToCloud(dataType, mapOf(conflict.key to value)).getOrThrow()
+            conflicts.remove(conflictId)
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
@@ -254,18 +255,16 @@ class CloudSyncService {
     }
     
     /**
-     * Process pending operations when connection is restored
+     * Process pending operations when connection is restored; failed ones stay queued
      */
     suspend fun processPendingOperations(): Result<Int> {
         return try {
-            val processed = _pendingOperations.value.count()
-            
+            var processed = 0
+            val remaining = mutableListOf<SyncOperation>()
             for (operation in _pendingOperations.value) {
-                executeOperation(operation)
+                if (executeOperation(operation).isSuccess) processed++ else remaining += operation
             }
-            
-            _pendingOperations.value = emptyList()
-            
+            _pendingOperations.value = remaining
             Result.success(processed)
         } catch (e: Exception) {
             Result.failure(e)
@@ -281,66 +280,89 @@ class CloudSyncService {
             lastSyncTime = _lastSyncTime.value,
             deviceCount = _syncedDevices.value.size,
             pendingOperations = _pendingOperations.value.size,
-            totalDataSynced = 0L // Placeholder
+            totalDataSynced = totalBytes
         )
     }
     
     // Private helper methods
     
-    private fun generateEncryptionKey(): ByteArray {
-        // Placeholder: In production, use proper key generation
-        return ByteArray(32) { it.toByte() }
+    private fun requireReady() {
+        if (!syncEnabled) throw IllegalStateException("Cloud sync is disabled")
+        if (userId == null || serverUrl == null) throw IllegalStateException("Cloud sync is not connected")
     }
     
-    private fun encryptData(data: Map<String, Any>): String {
-        // Placeholder: In production, use AES-256 encryption
-        return "encrypted_${data.hashCode()}"
+    private fun objectUrl(dataType: SyncDataType) = "${serverUrl!!.trimEnd('/')}/$userId/${dataType.name.lowercase()}"
+    
+    /** AES-256-GCM; the payload is base64(iv || ciphertext). */
+    private fun encryptData(data: Map<String, String>): ByteArray {
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.ENCRYPT_MODE, encryptionKey) }
+        val sealed = cipher.iv + cipher.doFinal(json.encodeToString(data).toByteArray())
+        return java.util.Base64.getEncoder().encode(sealed)
     }
     
-    private fun decryptData(encryptedData: String): Map<String, Any> {
-        // Placeholder: In production, decrypt using AES-256
-        return mapOf("decrypted" to "data")
+    private fun decryptData(encryptedData: ByteArray): Map<String, String> {
+        val sealed = java.util.Base64.getDecoder().decode(encryptedData)
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply {
+            init(Cipher.DECRYPT_MODE, encryptionKey, GCMParameterSpec(128, sealed.copyOfRange(0, 12)))
+        }
+        return json.decodeFromString(String(cipher.doFinal(sealed.copyOfRange(12, sealed.size))))
     }
     
-    private fun calculateDiff(dataType: SyncDataType, data: Map<String, Any>): Map<String, Any> {
-        // Placeholder: Calculate diff from last known state
-        return data
+    private suspend fun uploadToCloud(dataType: SyncDataType, payload: ByteArray): SyncResult = withContext(Dispatchers.IO) {
+        val request = Request.Builder().url(objectUrl(dataType))
+            .put(payload.toRequestBody("application/octet-stream".toMediaType())).build()
+        http.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) throw IllegalStateException("Upload failed: HTTP ${response.code}")
+        }
+        totalBytes += payload.size
+        SyncResult(success = true, timestamp = System.currentTimeMillis(), bytesTransferred = payload.size.toLong())
     }
     
-    private fun uploadToCloud(
-        dataType: SyncDataType,
-        diff: Map<String, Any>,
-        encryptedData: String
-    ): SyncResult {
-        // Placeholder: In production, upload to Firebase/backend
-        return SyncResult(
-            success = true,
-            timestamp = System.currentTimeMillis()
-        )
-    }
-    
-    private fun downloadFromCloud(dataType: SyncDataType): String {
-        // Placeholder: In production, download from Firebase/backend
-        return "encrypted_remote_data"
-    }
-    
-    private fun mergeData(dataType: SyncDataType, remoteData: Map<String, Any>): Map<String, Any> {
-        // Placeholder: Implement conflict-free replicated data type (CRDT) merge
-        return remoteData
-    }
-    
-    private fun performIntelligentMerge(dataType: SyncDataType, conflictId: String): Map<String, Any> {
-        // Placeholder: Use AI to intelligently merge conflicting data
-        return mapOf("merged" to "data")
-    }
-    
-    private suspend fun executeOperation(operation: SyncOperation) {
-        when (operation) {
-            is SyncOperation.Upload -> syncToCloud(operation.dataType, operation.data)
-            is SyncOperation.Download -> syncFromCloud(operation.dataType)
-            is SyncOperation.Delete -> {
-                // Handle delete operation
+    /** Null when the server has nothing stored yet. */
+    private suspend fun downloadFromCloud(dataType: SyncDataType): ByteArray? = withContext(Dispatchers.IO) {
+        http.newCall(Request.Builder().url(objectUrl(dataType)).get().build()).execute().use { response ->
+            when {
+                response.code == 404 -> null
+                !response.isSuccessful -> throw IllegalStateException("Download failed: HTTP ${response.code}")
+                else -> response.body!!.bytes().also { totalBytes += it.size }
             }
+        }
+    }
+    
+    /**
+     * Key-wise merge: keys present on one side are taken; differing values are kept local and
+     * recorded as conflicts for [resolveConflict].
+     */
+    private fun mergeData(dataType: SyncDataType, remoteData: Map<String, String>): Map<String, Any> {
+        val local = localData[dataType] ?: emptyMap()
+        val merged = remoteData.toMutableMap()
+        for ((key, value) in local) {
+            val remote = remoteData[key]
+            if (remote != null && remote != value) {
+                conflicts["${dataType.name}:$key"] = Conflict(dataType, key, value, remote)
+            }
+            merged[key] = value
+        }
+        localData[dataType] = merged
+        return merged
+    }
+    
+    /** The model reconciles both versions of the value into one. */
+    private suspend fun performIntelligentMerge(conflict: Conflict): String =
+        modelProvider().getOrThrow().ask(
+            "Two devices edited the same synced setting differently. Merge them into a single value that " +
+                "preserves the intent of both. Output only the merged value.",
+            "Key: ${conflict.key}\nThis device: ${conflict.local}\nOther device: ${conflict.remote}",
+            GenerationOptions(temperature = 0f, maxTokens = 256)
+        ).getOrThrow().trim()
+    
+    private suspend fun executeOperation(operation: SyncOperation): Result<*> = when (operation) {
+        is SyncOperation.Upload -> syncToCloud(operation.dataType, operation.data)
+        is SyncOperation.Download -> syncFromCloud(operation.dataType)
+        is SyncOperation.Delete -> runCatching {
+            requireReady()
+            localData[operation.dataType] = (localData[operation.dataType] ?: emptyMap()) - operation.id
+            uploadToCloud(operation.dataType, encryptData(localData[operation.dataType]!!))
         }
     }
     

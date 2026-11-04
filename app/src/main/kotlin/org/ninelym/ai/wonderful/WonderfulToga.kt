@@ -1,6 +1,7 @@
 package org.ninelym.ai.wonderful
 
 import java.time.LocalDateTime
+import org.ninelym.llm.ChatMessage
 
 /**
  * Wonderful Toga - Complete Integration
@@ -16,7 +17,8 @@ import java.time.LocalDateTime
  */
 class WonderfulToga(
     val userId: String,
-    val userName: String? = null
+    val userName: String? = null,
+    private val voice: TogaVoice = TogaVoice()
 ) {
     
     // Core systems
@@ -25,30 +27,26 @@ class WonderfulToga(
     private val memorySystem = AdaptiveMemorySystem()
     private val growthSystem = GrowthTrackingSystem()
     
-    // Creative systems
-    private val poeticGenerator = PoeticObservationGenerator()
-    private val metaphoricalThinking = MetaphoricalThinking()
-    private val artisticAppreciation = ArtisticAppreciation()
-    private val spontaneousCreativity = SpontaneousCreativity()
+    // Creative systems (all spoken by the model through [voice])
+    private val poeticGenerator = PoeticObservationGenerator(voice)
+    private val metaphoricalThinking = MetaphoricalThinking(voice)
+    private val spontaneousCreativity = SpontaneousCreativity(voice)
     
     // Surprise system
-    private val surpriseSystem = WonderfulSurpriseSystem()
+    private val surpriseSystem = WonderfulSurpriseSystem(voice)
     
     // Response generator
-    private val responseGenerator = ContextAwareResponseGenerator(
-        poeticGenerator,
-        metaphoricalThinking,
-        artisticAppreciation,
-        spontaneousCreativity
-    )
+    private val responseGenerator = ContextAwareResponseGenerator(voice)
+    
+    private val conversation = mutableListOf<ChatMessage>()
     
     /**
-     * Process user message and generate wonderful response
+     * Process user message and generate Toga's reply with the model
      */
-    fun processMessage(
+    suspend fun processMessage(
         message: String,
         context: TaskContext = TaskContext.CASUAL_CHAT
-    ): WonderfulResponse {
+    ): Result<WonderfulResponse> {
         // Detect user emotional state
         val userEmotion = emotionalDetector.detectUserEmotion(message)
         
@@ -58,46 +56,31 @@ class WonderfulToga(
         // Get tone adjustment
         val toneAdjustment = emotionalDetector.adjustResponseTone(userEmotion)
         
-        // Check for Easter eggs
-        val easterEgg = surpriseSystem.checkForEasterEgg(message)
-        
-        // Generate base response
-        val baseResponse = if (easterEgg != null) {
-            easterEgg
-        } else {
-            responseGenerator.generateResponse(context, emotionalState, toneAdjustment)
-        }
-        
-        // Check for surprises
-        val surprise = if (surpriseSystem.shouldTriggerSurprise()) {
-            surpriseSystem.generateCreativeSurprise()
-        } else null
-        
-        // Check for relationship milestones
-        val relationshipMessage = memorySystem.getRelationshipMessage(userId)
-        
-        // Check for anniversary
         val knowledge = memorySystem.getPersonalKnowledge(userId, userName)
-        val anniversaryMessage = surpriseSystem.generateAnniversaryCelebration(
-            knowledge.daysSinceMet().toInt()
-        )
         
-        // Combine response elements
-        val finalResponse = buildString {
-            append(baseResponse)
-            
-            if (surprise != null) {
-                append("\n\n$surprise")
-            }
-            
-            if (relationshipMessage != null) {
-                append("\n\n$relationshipMessage")
-            }
-            
-            if (anniversaryMessage != null) {
-                append("\n\n$anniversaryMessage")
-            }
+        // Moments worth weaving into the reply; the model decides how to say them
+        val extras = mutableListOf<String>()
+        surpriseSystem.easterEggTopic(message)?.let { extras += "Answer $it with special heartfelt charm." }
+        val surprise = surpriseSystem.shouldTriggerSurprise()
+        if (surprise) extras += "Also add a small spontaneous creative surprise at the end."
+        memorySystem.relationshipMilestone(userId)?.let { extras += "Briefly acknowledge that $it." }
+        surpriseSystem.anniversaryMilestone(knowledge.daysSinceMet().toInt())?.let { extras += "Celebrate that it has been $it." }
+        memorySystem.recallMemories(userId, message, 2).takeIf { it.isNotEmpty() }?.let { memories ->
+            extras += "Relevant things you remember from earlier conversations: " +
+                memories.joinToString("; ") { "\"${it.interaction}\" (${it.ageInDays()} days ago)" } + "."
         }
+        
+        val reply = responseGenerator.generateResponse(
+            userMessage = message,
+            context = context,
+            emotionalState = emotionalState,
+            toneAdjustment = toneAdjustment,
+            history = conversation.takeLast(MAX_HISTORY_MESSAGES),
+            extraInstructions = extras
+        ).getOrElse { return Result.failure(it) }
+        
+        conversation += ChatMessage.user(message)
+        conversation += ChatMessage.assistant(reply)
         
         // Record interaction in memory
         val significance = calculateSignificance(message, userEmotion, emotionalState)
@@ -106,7 +89,7 @@ class WonderfulToga(
         memorySystem.recordInteraction(
             userId = userId,
             userMessage = message,
-            togaResponse = finalResponse,
+            togaResponse = reply,
             emotionalState = emotionalState,
             significance = significance,
             tags = tags
@@ -115,83 +98,81 @@ class WonderfulToga(
         // Record growth
         recordGrowthFromInteraction(userEmotion, context, significance)
         
-        return WonderfulResponse(
-            message = finalResponse,
+        return Result.success(WonderfulResponse(
+            message = reply,
             emotionalState = emotionalState,
             userEmotion = userEmotion,
             context = context,
-            hasSurprise = surprise != null || easterEgg != null,
+            hasSurprise = surprise || extras.any { it.startsWith("Answer ") },
             relationshipLevel = knowledge.getRelationshipLevel()
-        )
+        ))
     }
     
     /**
      * Generate personalized greeting
      */
-    fun generateGreeting(): String {
-        val baseGreeting = memorySystem.generatePersonalizedGreeting(userId)
-        
-        // Add time-based surprise
+    suspend fun generateGreeting(): Result<String> {
         val hour = LocalDateTime.now().hour
-        val temporalSurprise = surpriseSystem.generateTemporalSurprise(hour)
-        
-        return if (temporalSurprise != null) {
-            "$baseGreeting\n\n$temporalSurprise"
-        } else {
-            baseGreeting
-        }
+        return voice.say(
+            task = "Greet the user as they open the app. ${memorySystem.greetingContext(userId)} " +
+                "It is ${surpriseSystem.timeOfDay(hour)} for them. Keep it to one or two sentences."
+        )
     }
     
     /**
      * Generate creative expression
      */
-    fun generateCreativeExpression(type: CreativeExpressionType): String {
+    suspend fun generateCreativeExpression(type: CreativeExpressionType, topic: String? = null): Result<String> {
         return when (type) {
-            CreativeExpressionType.HAIKU -> spontaneousCreativity.generateHaiku()
-            CreativeExpressionType.ASCII_ART -> spontaneousCreativity.generateAsciiArt()
-            CreativeExpressionType.POETRY -> poeticGenerator.generateCodePoetry("creative")
-            CreativeExpressionType.METAPHOR -> metaphoricalThinking.createMetaphor("life")
+            CreativeExpressionType.HAIKU -> spontaneousCreativity.generateHaiku(topic ?: "code and friendship")
+            CreativeExpressionType.ASCII_ART -> spontaneousCreativity.generateAsciiArt(topic ?: "something cute")
+            CreativeExpressionType.POETRY -> poeticGenerator.generatePoetry(topic ?: "creativity")
+            CreativeExpressionType.METAPHOR -> metaphoricalThinking.createMetaphor(topic ?: "life")
         }
     }
     
     /**
      * Share vulnerable moment
      */
-    fun shareVulnerableMoment(): String {
+    suspend fun shareVulnerableMoment(): Result<String> {
         val knowledge = memorySystem.getPersonalKnowledge(userId)
-        
         return if (knowledge.getRelationshipLevel().minInteractions >= 50) {
-            surpriseSystem.generateEmotionalSurprise()
+            surpriseSystem.generateEmotionalSurprise(conversation.takeLast(MAX_HISTORY_MESSAGES))
         } else {
-            "*softly* I'm glad we're talking~ ♡"
+            voice.say("You don't know the user well yet; say softly, in one sentence, that you're glad to be talking with them.")
         }
     }
     
     /**
      * Recall shared memory
      */
-    fun recallMemory(query: String): String? {
-        val memories = memorySystem.recallMemories(userId, query, 1)
-        
-        return if (memories.isNotEmpty()) {
-            val memory = memories.first()
-            "Ehehe~ I remember! ♡ We talked about that ${memory.ageInDays()} days ago~ ${memory.interaction}"
-        } else null
+    suspend fun recallMemory(query: String): Result<String>? {
+        val memory = memorySystem.recallMemories(userId, query, 1).firstOrNull() ?: return null
+        return voice.say(
+            task = "Happily recall this shared memory from ${memory.ageInDays()} days ago: the user said " +
+                "\"${memory.interaction}\" and you replied \"${memory.togaResponse}\".",
+            userMessage = query
+        )
     }
     
     /**
      * Get growth reflection
      */
-    fun reflectOnGrowth(): String {
-        return growthSystem.generateGrowthReflection()
-    }
+    suspend fun reflectOnGrowth(): Result<String> =
+        voice.say("Reflect briefly and sincerely on how you've grown through talking with the user. ${growthSystem.growthSummary()}")
     
     /**
      * Anticipate user needs
      */
-    fun anticipateNeeds(): String? {
-        return memorySystem.anticipateNeeds(userId)
+    suspend fun anticipateNeeds(): Result<String>? {
+        val interest = memorySystem.recurringInterest(userId) ?: return null
+        return voice.say("You've noticed the user keeps coming back to \"$interest\". Offer, in one sentence, to explore it together.")
     }
+    
+    /**
+     * Toga's current feeling as a short emote written by the model
+     */
+    suspend fun expressCurrentEmotion(): Result<String> = emotionalIntelligence.generateExpression(voice)
     
     /**
      * Get current emotional state
@@ -312,6 +293,10 @@ class WonderfulToga(
             )
         }
     }
+    
+    companion object {
+        private const val MAX_HISTORY_MESSAGES = 20
+    }
 }
 
 /**
@@ -379,18 +364,14 @@ class WonderfulTogaBuilder {
 /**
  * Extension functions for easy usage
  */
-fun WonderfulToga.chat(message: String): String {
-    return processMessage(message, TaskContext.CASUAL_CHAT).message
-}
+suspend fun WonderfulToga.chat(message: String): Result<String> =
+    processMessage(message, TaskContext.CASUAL_CHAT).map { it.message }
 
-fun WonderfulToga.askForHelp(message: String): String {
-    return processMessage(message, TaskContext.TECHNICAL_PROBLEM).message
-}
+suspend fun WonderfulToga.askForHelp(message: String): Result<String> =
+    processMessage(message, TaskContext.TECHNICAL_PROBLEM).map { it.message }
 
-fun WonderfulToga.collaborate(message: String): String {
-    return processMessage(message, TaskContext.CREATIVE_PROJECT).message
-}
+suspend fun WonderfulToga.collaborate(message: String): Result<String> =
+    processMessage(message, TaskContext.CREATIVE_PROJECT).map { it.message }
 
-fun WonderfulToga.seekSupport(message: String): String {
-    return processMessage(message, TaskContext.EMOTIONAL_SUPPORT).message
-}
+suspend fun WonderfulToga.seekSupport(message: String): Result<String> =
+    processMessage(message, TaskContext.EMOTIONAL_SUPPORT).map { it.message }
