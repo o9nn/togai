@@ -16,6 +16,7 @@ import kotlinx.coroutines.launch
 import org.ninelym.evolution.LanguageResult
 import org.ninelym.evolution.Modality
 import org.ninelym.evolution.MultimodalRequest
+import org.ninelym.evolution.MultimodalResponse
 import org.ninelym.optimization.MemoryState
 
 /**
@@ -177,8 +178,7 @@ fun MainScreen(app: TogaiApplication) {
                             )
                             val response = app.multimodalOrchestrator.processMultimodal(request)
                             android.util.Log.i("MainActivity", "Test result: ${response.success}")
-                            testReply = (response.results[Modality.LANGUAGE] as? LanguageResult)?.response
-                                ?: "Error: ${response.error ?: "no language model is serving"}"
+                            testReply = testButtonReply(response)
                         } catch (e: Exception) {
                             android.util.Log.e("MainActivity", "Test failed", e)
                             testReply = "Error: ${e.message}"
@@ -246,3 +246,11 @@ fun StatusCard(
         }
     }
 }
+
+/**
+ * What the test button shows: the model's language reply exactly as the model wrote it, or the
+ * real error when no reply was produced. Nothing else is ever shown in the reply's place.
+ */
+internal fun testButtonReply(response: MultimodalResponse): String =
+    (response.results[Modality.LANGUAGE] as? LanguageResult)?.response
+        ?: "Error: ${response.error ?: "no language reply was produced"}"

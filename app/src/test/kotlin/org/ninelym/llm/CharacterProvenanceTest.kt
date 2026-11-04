@@ -206,6 +206,8 @@ class CharacterProvenanceTest {
             val language = response.results[Modality.LANGUAGE] as? LanguageResult
             assertTrue("no language result: $response", language != null)
             model.assertFromModel("MultimodalOrchestrator language", language!!.response)
+            // What MainActivity displays for this response
+            model.assertFromModel("MainActivity test button", org.ninelym.togai.testButtonReply(response))
         }
     }
 
@@ -218,6 +220,9 @@ class CharacterProvenanceTest {
             assertTrue("a language reply appeared without a model: $response", Modality.LANGUAGE !in response.results)
             assertTrue("the request must fail without a model, not report success: $response", !response.success)
             assertTrue("the failure must say why: $response", response.error?.contains("language model") == true)
+            // MainActivity shows the real error, not a reply
+            val shown = org.ninelym.togai.testButtonReply(response)
+            assertTrue("MainActivity must show the error: $shown", shown.startsWith("Error: ") && "language model" in shown)
         }
     }
 
