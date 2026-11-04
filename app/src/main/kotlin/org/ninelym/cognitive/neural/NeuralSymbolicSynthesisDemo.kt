@@ -39,7 +39,7 @@ object NeuralSymbolicSynthesisDemo {
             val initialized = kernel.initialize(GgmlBackend.CPU)
             if (!initialized) {
                 println("❌ Failed to initialize kernel - native kernel unavailable")
-                runSimulationMode()
+                reportKernelUnavailable()
                 return
             }
             
@@ -74,7 +74,7 @@ object NeuralSymbolicSynthesisDemo {
         } catch (e: Exception) {
             println("❌ Demo failed with exception: ${e.message}")
             println("Native kernel unavailable.")
-            runSimulationMode()
+            reportKernelUnavailable()
         }
     }
     
@@ -94,8 +94,9 @@ object NeuralSymbolicSynthesisDemo {
                  TruthValue(0.95f, 0.9f), AttentionValue(0.9f, 0.8f))
         )
         
-        // Neural embeddings (simulated from neural network)
-        val neuralEmbeddings = FloatArray(256) { kotlin.random.Random.nextFloat() }
+        // Embeddings computed from the atoms' own names (hashed bag-of-words features)
+        val neuralEmbeddings = org.ninelym.cognitive.planetary.textVector(atoms.joinToString(" ") { it.name }, 256)
+            .map { it.toFloat() }.toFloatArray()
         
         println("  • Input: ${atoms.size} symbolic atoms")
         println("  • Neural embeddings: ${neuralEmbeddings.size} dimensions")
@@ -110,7 +111,7 @@ object NeuralSymbolicSynthesisDemo {
         println("    - salience: ${String.format("%.3f", fusedTensor.salience)}")
         println("    - autonomy_index: ${String.format("%.3f", fusedTensor.autonomyIndex)}")
         
-        // Demonstrate different tensor operations
+        // Demonstrate different tensor operations on a random weight matrix
         val weights = FloatArray(25) { kotlin.random.Random.nextFloat() }
         
         println("  • Tensor operations:")
@@ -197,9 +198,9 @@ object NeuralSymbolicSynthesisDemo {
     }
     
     /**
-     * Run simulation mode when native libraries are not available
+     * Report that the native kernel is missing; no results are produced without it
      */
-    private fun runSimulationMode() {
+    private fun reportKernelUnavailable() {
         // No numbers are reported without the native kernel actually running
         println("⚠️  The native neural-symbolic kernel is not available; no kernel, benchmark or")
         println("   verification results can be produced. Package the ggml native library to run this demo.")

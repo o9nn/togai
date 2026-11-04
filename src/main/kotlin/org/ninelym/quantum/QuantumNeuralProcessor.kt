@@ -49,7 +49,7 @@ class QuantumNeuralProcessor {
                 System.loadLibrary("laylaQNN")
                 Log.i("QuantumNeuralProcessor", "Loaded laylaQNN native library")
             } catch (e: UnsatisfiedLinkError) {
-                Log.w("QuantumNeuralProcessor", "laylaQNN library not available, using simulation")
+                Log.w("QuantumNeuralProcessor", "laylaQNN library not available; computing qubit state in Kotlin")
             }
         }
     }

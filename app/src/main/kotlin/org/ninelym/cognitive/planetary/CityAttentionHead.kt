@@ -209,11 +209,8 @@ class CityAttentionHead(
             query.topic.contains(topic, ignoreCase = true) || topic.contains(query.topic, ignoreCase = true)
         }
         
-        return if (relevantEntries.isNotEmpty()) {
-            relevantEntries.values.joinToString("; ") { it.content }
-        } else {
-            "No specific knowledge available, but willing to collaborate on: ${query.topic}"
-        }
+        // A city without relevant knowledge contributes nothing rather than a stock reply
+        return relevantEntries.values.joinToString("; ") { it.content }
     }
     
     private fun calculateConfidence(query: UrbanQuery): Double {
@@ -224,15 +221,16 @@ class CityAttentionHead(
     }
     
     private fun synthesize(responses: List<WeightedKnowledgeResponse>): String {
-        if (responses.isEmpty()) return "No solutions available"
-        
-        val totalWeight = responses.sumOf { it.weight }
-        val weightedSolutions = responses.map { response ->
+        val informed = responses.filter { it.knowledge.knowledge.isNotBlank() }
+        if (informed.isEmpty()) return ""
+
+        val totalWeight = informed.sumOf { it.weight }
+        val weightedSolutions = informed.map { response ->
             val weight = response.weight / totalWeight
             "- ${response.city} (${(weight * 100).toInt()}%): ${response.knowledge.knowledge}"
         }
         
-        return "Synthesized solution from ${responses.size} cities:\n" + weightedSolutions.joinToString("\n")
+        return "Synthesized solution from ${informed.size} cities:\n" + weightedSolutions.joinToString("\n")
     }
     
     private fun calculateLocalCost(weights: List<Double>): Double {
@@ -278,14 +276,11 @@ data class DistrictNeuron(
     val name: String,
     val function: String
 ) {
-    fun getKnowledgeVector(): List<Double> {
-        // Simple embedding based on function
-        return List(8) { Math.random() }
-    }
-    
-    fun getSolutionVector(): List<Double> {
-        return List(8) { Math.random() }
-    }
+    /** Embedding of what this district knows: its name and function. */
+    fun getKnowledgeVector(): List<Double> = textVector("$name $function")
+
+    /** Embedding of what this district contributes to a solution: its function. */
+    fun getSolutionVector(): List<Double> = textVector(function)
 }
 
 /**
@@ -299,10 +294,8 @@ data class UrbanQuery(
     val budget: Double = 100.0,
     val timestamp: Long = System.currentTimeMillis()
 ) {
-    fun toVector(): List<Double> {
-        // Convert query to embedding vector
-        return List(8) { Math.random() }
-    }
+    /** Embedding of the query's own text. */
+    fun toVector(): List<Double> = textVector("$topic $description")
 }
 
 enum class QueryPriority(val value: Double) {
@@ -390,3 +383,16 @@ data class CityKnowledge(
     val successRate: Double = 0.8,
     val timesUsed: Int = 0
 )
+
+/**
+ * Deterministic embedding of [text]: hashed bag-of-words counts, L2-normalised. Equal texts map to
+ * equal vectors and texts sharing words point in similar directions, so attention reflects content.
+ */
+internal fun textVector(text: String, dimensions: Int = 8): List<Double> {
+    val counts = DoubleArray(dimensions)
+    text.lowercase().split(Regex("[^\\p{L}\\p{N}]+")).filter { it.isNotEmpty() }.forEach { word ->
+        counts[Math.floorMod(word.hashCode(), dimensions)] += 1.0
+    }
+    val norm = sqrt(counts.sumOf { it * it })
+    return if (norm == 0.0) counts.toList() else counts.map { it / norm }
+}

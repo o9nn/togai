@@ -191,8 +191,8 @@ class Phase7Demo {
         println("   - Attention Updates: ${syncData.attentionUpdates.size}")
         println("   - Is Delta: ${syncData.isDelta}")
 
-        // Simulate receiving sync data on node B
-        println("\n   Simulating sync reception on Node Beta...")
+        // Deliver the sync data to node B
+        println("\n   Delivering sync data to Node Beta...")
         val mergeResult = nodeB.receiveSyncData("node-alpha", syncData)
         println("   - Merge Success: ${mergeResult.success}")
         println("   - Operations Merged: ${mergeResult.mergedCount}")
