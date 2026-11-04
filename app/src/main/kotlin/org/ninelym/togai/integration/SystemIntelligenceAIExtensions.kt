@@ -1,5 +1,7 @@
 package org.ninelym.togai.integration
 
+import kotlinx.serialization.json.jsonObject
+
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 
@@ -21,11 +23,8 @@ import kotlinx.coroutines.flow.*
 suspend fun SystemIntelligenceService.summarizeScreenWithAI(
     cogai: CogAIBridge
 ): ScreenSummary {
-    val content = getScreenContent() ?: return ScreenSummary(
-        summary = "Unable to read screen content",
-        keyPoints = emptyList(),
-        suggestedActions = emptyList()
-    )
+    val content = getScreenContent()
+        ?: throw IllegalStateException("Screen content is unavailable (is the accessibility service enabled?)")
 
     val screenText = content.allText.take(3000) // Limit for API
     val interactiveCount = content.interactiveElements.size
@@ -35,10 +34,8 @@ suspend fun SystemIntelligenceService.summarizeScreenWithAI(
         .take(10)
 
     val prompt = buildString {
-        appendLine("Analyze this Android screen and provide:")
-        appendLine("1. A brief summary (1-2 sentences)")
-        appendLine("2. Key points/information shown (bullet points)")
-        appendLine("3. Suggested actions the user might want to take")
+        appendLine("Analyze this Android screen. Respond with a JSON object:")
+        appendLine("{\"summary\": \"1-2 sentences\", \"keyPoints\": [\"...\"], \"suggestedActions\": [\"...\"]}")
         appendLine()
         appendLine("App: ${content.packageName}")
         appendLine("Window: ${content.windowTitle ?: "Unknown"}")
@@ -48,12 +45,20 @@ suspend fun SystemIntelligenceService.summarizeScreenWithAI(
         appendLine(screenText)
     }
 
-    val response = cogai.ask(
-        prompt = prompt,
-        systemPrompt = "You are a helpful assistant analyzing Android screens. Be concise and practical."
-    )
-
-    return parseScreenSummary(response, content)
+    // Re-ask the model if its output can't be parsed; never substitute a summary of our own
+    var lastError: Exception? = null
+    repeat(3) {
+        val response = cogai.ask(
+            prompt = prompt,
+            systemPrompt = "You are a helpful assistant analyzing Android screens. Be concise and practical. Output only JSON."
+        )
+        try {
+            return parseScreenSummary(response, content)
+        } catch (e: IllegalStateException) {
+            lastError = e
+        }
+    }
+    throw CogAIException("Model did not produce a usable screen summary: ${lastError?.message}")
 }
 
 data class ScreenSummary(
@@ -81,46 +86,26 @@ private fun parseScreenSummary(
     aiResponse: String,
     content: SystemIntelligenceService.ScreenContent
 ): ScreenSummary {
-    val lines = aiResponse.lines()
-    var summary = ""
-    val keyPoints = mutableListOf<String>()
-    val suggestedActions = mutableListOf<String>()
-
-    var section = "summary"
-
-    for (line in lines) {
-        val trimmed = line.trim()
-        when {
-            trimmed.startsWith("Key point", ignoreCase = true) ||
-            trimmed.startsWith("- ") && section == "summary" -> {
-                section = "keypoints"
-            }
-            trimmed.startsWith("Suggested", ignoreCase = true) ||
-            trimmed.startsWith("Action", ignoreCase = true) -> {
-                section = "actions"
-            }
-            trimmed.startsWith("- ") || trimmed.startsWith("• ") -> {
-                val point = trimmed.removePrefix("- ").removePrefix("• ")
-                when (section) {
-                    "keypoints" -> keyPoints.add(point)
-                    "actions" -> suggestedActions.add(point)
-                }
-            }
-            trimmed.isNotBlank() && section == "summary" -> {
-                summary = if (summary.isEmpty()) trimmed else "$summary $trimmed"
-            }
-        }
+    val start = aiResponse.indexOf('{')
+    val end = aiResponse.lastIndexOf('}')
+    if (start < 0 || end < start) throw IllegalStateException("not JSON: ${aiResponse.take(200)}")
+    val obj = try {
+        kotlinx.serialization.json.Json.parseToJsonElement(aiResponse.substring(start, end + 1)).jsonObject
+    } catch (e: Exception) {
+        throw IllegalStateException("invalid JSON: ${e.message}")
     }
-
-    // Detect screen type
-    val screenType = detectScreenType(content)
+    fun list(key: String) = (obj[key] as? kotlinx.serialization.json.JsonArray)
+        ?.mapNotNull { (it as? kotlinx.serialization.json.JsonPrimitive)?.content?.takeIf { s -> s.isNotBlank() } }
+        ?: emptyList()
+    val summary = (obj["summary"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.takeIf { it.isNotBlank() }
+        ?: throw IllegalStateException("no summary in model output")
 
     return ScreenSummary(
-        summary = summary.ifEmpty { aiResponse.take(200) },
-        keyPoints = keyPoints,
-        suggestedActions = suggestedActions,
+        summary = summary,
+        keyPoints = list("keyPoints"),
+        suggestedActions = list("suggestedActions"),
         appName = content.packageName.split(".").lastOrNull(),
-        screenType = screenType
+        screenType = detectScreenType(content)
     )
 }
 
@@ -153,7 +138,12 @@ suspend fun SystemIntelligenceService.getContextualHelp(
     userQuestion: String,
     cogai: CogAIBridge
 ): String {
-    val content = getScreenContent() ?: return "Unable to read screen content"
+    val content = getScreenContent()
+        ?: return cogai.ask(
+            prompt = "The user asked: $userQuestion\n\n(Their screen content could not be read.)",
+            systemPrompt = "You are a helpful Android assistant. Answer the question as well as you can, " +
+                "and mention that you couldn't see their screen."
+        )
 
     val prompt = buildString {
         appendLine("The user is viewing this Android screen and has a question.")
@@ -217,7 +207,8 @@ Action types: OPEN_APP, NAVIGATE, SEARCH, CREATE, SEND, PLAY, SETTINGS, OTHER"""
 data class ActionSuggestion(
     val type: ActionType,
     val description: String,
-    val confidence: Float = 0.5f
+    /** Null: the model doesn't report a confidence. */
+    val confidence: Float? = null
 )
 
 enum class ActionType {

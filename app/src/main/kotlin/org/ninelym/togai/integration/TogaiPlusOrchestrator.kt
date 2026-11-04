@@ -345,13 +345,13 @@ class TogaiPlusOrchestrator private constructor(
             "transcribe" -> {
                 val audioPath = params["audio_path"] ?: return false to "Missing 'audio_path' parameter"
                 val result = cogai.transcribe(audioPath)
-                (result.error == null) to (result.text.ifEmpty { result.error ?: "No transcription" })
+                (result.error == null && result.text.isNotBlank()) to (result.error ?: result.text.ifBlank { "Transcription returned no text" })
             }
             "synthesize", "speak" -> {
                 val text = params["text"] ?: return false to "Missing 'text' parameter"
                 val voice = params["voice"] ?: "default"
                 val result = cogai.synthesize(text, voice)
-                (result.error == null) to (result.audio_path.ifEmpty { result.error ?: "No audio generated" })
+                (result.error == null && result.audio_path.isNotBlank()) to (result.error ?: result.audio_path.ifBlank { "Speech synthesis returned no audio" })
             }
             else -> false to "Unknown Speech action: $action"
         }
