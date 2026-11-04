@@ -20,6 +20,21 @@ import org.ninelym.mlc.MLCChatEngine
 import org.ninelym.mlc.MLCModelConfig
 import org.ninelym.togai.character.Personalities
 import org.ninelym.togai.character.PersonalityEngine
+import io.mockk.coEvery
+import io.mockk.every
+import io.mockk.mockk
+import io.mockk.mockkStatic
+import io.mockk.unmockkStatic
+import kotlinx.coroutines.flow.MutableStateFlow
+import org.ninelym.evolution.LanguageResult
+import org.ninelym.evolution.Modality
+import org.ninelym.evolution.MultimodalOrchestrator
+import org.ninelym.evolution.MultimodalRequest
+import org.ninelym.layla.LaylaAssistant
+import org.ninelym.optimization.MemoryOptimizer
+import org.ninelym.optimization.MemoryStatistics
+import org.ninelym.optimization.PerformanceMonitor
+import org.ninelym.quantum.QuantumNeuralProcessor
 import java.util.Collections
 
 /**
@@ -156,5 +171,81 @@ class CharacterProvenanceTest {
         val characters = CharacterSystem().apply { initializeDefaultCharacters() }
         val persona = characters.getCharacter("toga")!!.toPersonaPrompt()
         assertTrue("character persona answered without a model", persona.respond(unreachable().getOrThrow(), "hello").isFailure)
+    }
+
+    /** android.util.Log is not implemented in JVM unit tests; route it to nothing while these run. */
+    private fun <T> withAndroidLog(block: () -> T): T {
+        mockkStatic(android.util.Log::class)
+        every { android.util.Log.i(any(), any()) } returns 0
+        every { android.util.Log.w(any(), any<String>()) } returns 0
+        every { android.util.Log.d(any(), any()) } returns 0
+        every { android.util.Log.e(any(), any()) } returns 0
+        every { android.util.Log.e(any(), any(), any()) } returns 0
+        try { return block() } finally { unmockkStatic(android.util.Log::class) }
+    }
+
+    /** The orchestrator behind MainActivity's test button; only device readings (memory, build info) are stubbed. */
+    private fun orchestrator(provider: () -> Result<LanguageModel>): MultimodalOrchestrator {
+        val memory = mockk<MemoryOptimizer> {
+            every { memoryStats } returns MutableStateFlow(MemoryStatistics(availableMemoryMB = 512))
+        }
+        // The performance monitor reads device build info absent on the JVM; it runs each operation as-is
+        val monitor = mockk<PerformanceMonitor> {
+            coEvery { measureOperation<Any?>(any(), any()) } coAnswers { secondArg<suspend () -> Any?>().invoke() }
+        }
+        return MultimodalOrchestrator(memory, monitor, QuantumNeuralProcessor(), provider)
+    }
+
+    @Test
+    fun `MainActivity multimodal language reply is the model's text`(): Unit = withAndroidLog {
+        runBlocking {
+            val model = recorder()
+            val orchestrator = orchestrator { Result.success(model) }
+            orchestrator.initialize()
+            val response = orchestrator.processMultimodal(MultimodalRequest(textInput = "Hello, Togai!"))
+            val language = response.results[Modality.LANGUAGE] as? LanguageResult
+            assertTrue("no language result: $response", language != null)
+            model.assertFromModel("MultimodalOrchestrator language", language!!.response)
+        }
+    }
+
+    @Test
+    fun `MainActivity multimodal path gives no language reply without a model`(): Unit = withAndroidLog {
+        runBlocking {
+            val orchestrator = orchestrator(unreachable)
+            orchestrator.initialize()
+            val response = orchestrator.processMultimodal(MultimodalRequest(textInput = "Hello, Togai!"))
+            assertTrue("a language reply appeared without a model: $response", Modality.LANGUAGE !in response.results)
+        }
+    }
+
+    @Test
+    fun `Layla assistant chat and reply are the model's text`(): Unit = runBlocking {
+        val model = recorder()
+        LanguageModels.configure(model)
+        try {
+            val layla = LaylaAssistant()
+            val conversation = layla.startChat()
+            layla.getChatService().setActiveConversation(conversation)
+            model.assertFromModel("LaylaAssistant.sendMessage", layla.sendMessage("What are qubits?").getOrThrow())
+            model.assertFromModel("LaylaAssistant.reply", layla.reply("Name one planet.").getOrThrow())
+        } finally {
+            LanguageModels.configure(OpenAICompatibleModel(liveConfig()))
+        }
+    }
+
+    @Test
+    fun `Layla assistant does not answer without a model`(): Unit = runBlocking {
+        val config = liveConfig()
+        LanguageModels.configure(unreachable().getOrThrow())
+        try {
+            val layla = LaylaAssistant()
+            val conversation = layla.startChat()
+            layla.getChatService().setActiveConversation(conversation)
+            assertTrue("LaylaAssistant.sendMessage answered without a model", layla.sendMessage("hello").isFailure)
+            assertTrue("LaylaAssistant.reply answered without a model", layla.reply("hello").isFailure)
+        } finally {
+            LanguageModels.configure(OpenAICompatibleModel(config))
+        }
     }
 }
