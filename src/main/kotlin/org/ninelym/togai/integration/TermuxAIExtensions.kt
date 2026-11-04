@@ -250,9 +250,9 @@ suspend fun TermuxIntegrationService.downloadFile(
     useCurl: Boolean = true
 ): CommandResult {
     val command = if (useCurl) {
-        "curl -L -o $outputPath '$url'"
+        "curl -L -o ${shellQuote(outputPath)} ${shellQuote(url)}"
     } else {
-        "wget -O $outputPath '$url'"
+        "wget -O ${shellQuote(outputPath)} ${shellQuote(url)}"
     }
     return executeCommand(command, timeout = 300.seconds)
 }
@@ -269,12 +269,12 @@ suspend fun TermuxIntegrationService.httpRequest(
     val command = buildString {
         append("curl -s -X $method")
         headers.forEach { (key, value) ->
-            append(" -H '$key: $value'")
+            append(" -H ").append(shellQuote("$key: $value"))
         }
         if (body != null) {
-            append(" -d '${body.replace("'", "\\'")}'")
+            append(" -d ").append(shellQuote(body))
         }
-        append(" '$url'")
+        append(" ").append(shellQuote(url))
     }
     return executeCommand(command)
 }
@@ -296,7 +296,7 @@ suspend fun TermuxIntegrationService.findFiles(
     maxDepth: Int? = null
 ): List<String> {
     val depthArg = if (maxDepth != null) "-maxdepth $maxDepth" else ""
-    val result = executeCommand("find $directory $depthArg -name '$pattern' 2>/dev/null")
+    val result = executeCommand("find ${shellQuote(directory)} $depthArg -name ${shellQuote(pattern)} 2>/dev/null")
     return if (result.isSuccess) {
         result.stdout.lines().filter { it.isNotBlank() }
     } else {
@@ -432,3 +432,10 @@ data class WorkflowResult(
         }
     }
 }
+
+/**
+ * Quote [value] as one POSIX shell word. Inside single quotes nothing is special except the quote
+ * itself, which is closed, emitted escaped, and reopened ('\''), so text such as "I'm" or
+ * "'; rm -rf ~" reaches the command verbatim and can never run as shell.
+ */
+fun shellQuote(value: String): String = "'" + value.replace("'", "'\\''") + "'"
