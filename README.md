@@ -242,6 +242,8 @@ stable-diffusion.cpp / LocalAI for images) or remotely.
 | Base URL (incl. `/v1`) | `ModelSettings` (default `http://127.0.0.1:11434/v1`, Ollama) | `TOGAI_LLM_BASE_URL` |
 | Model id | `ModelSettings` (default `llama3.2`) | `TOGAI_LLM_MODEL` |
 | API key (optional) | `ModelSettings` | `TOGAI_LLM_API_KEY` |
+| Speech/image server (optional) | `ModelSettings` `media_base_url` | `TOGAI_MEDIA_BASE_URL` |
+| Vision model (optional) | `ModelSettings` `vision_base_url` / `vision_model` | `TOGAI_VISION_BASE_URL` / `TOGAI_VISION_MODEL` |
 
 For example, to serve a small model locally and run the live tests:
 

@@ -52,6 +52,8 @@ class TogaiApplication : Application() {
         
         // All character/AI text comes from this model endpoint
         LanguageModels.configure(ModelSettings.load(this))
+        ModelSettings.loadMedia(this)?.let { LanguageModels.configureMedia(it) }
+        ModelSettings.loadVision(this)?.let { LanguageModels.configureVision(it) }
 
         // Initialize core systems
         initializeCoreSystem()

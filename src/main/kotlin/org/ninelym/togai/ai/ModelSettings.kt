@@ -21,6 +21,20 @@ object ModelSettings {
         )
     }
 
+    /** Optional separate server for speech and image models (null: the main endpoint serves them). */
+    fun loadMedia(context: Context): ModelEndpointConfig? {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val url = prefs.getString("media_base_url", null)?.takeIf { it.isNotBlank() } ?: return null
+        return ModelEndpointConfig(url, prefs.getString("media_model", null) ?: "stable-diffusion", prefs.getString("api_key", null))
+    }
+
+    /** Optional separate vision-capable model (null: the main model is used). */
+    fun loadVision(context: Context): ModelEndpointConfig? {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val url = prefs.getString("vision_base_url", null)?.takeIf { it.isNotBlank() } ?: return null
+        return ModelEndpointConfig(url, prefs.getString("vision_model", null) ?: "nanollava", prefs.getString("api_key", null))
+    }
+
     fun save(context: Context, config: ModelEndpointConfig) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putString("base_url", config.baseUrl)
