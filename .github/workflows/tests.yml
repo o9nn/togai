@@ -20,6 +20,10 @@ on:
     - cron: '0 2 * * *'
   workflow_dispatch:
 
+env:
+  # Windows runners default to cp1252; the test steps print non-ASCII status marks
+  PYTHONIOENCODING: utf-8
+
 jobs:
   unit-tests:
     name: Unit Tests - Python ${{ matrix.python-version }} on ${{ matrix.os }}
