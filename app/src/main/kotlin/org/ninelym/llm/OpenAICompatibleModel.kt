@@ -184,11 +184,18 @@ class OpenAICompatibleModel(
     }
 
     /** Image generation via `POST /images/generations`; returns decoded image bytes. */
-    suspend fun generateImage(prompt: String, size: String = "512x512", model: String = config.model): Result<ByteArray> =
+    /** Generates an image. [seed], when the server supports it, makes the render reproducible. */
+    suspend fun generateImage(
+        prompt: String,
+        size: String = "512x512",
+        model: String = config.model,
+        seed: Long? = null
+    ): Result<ByteArray> =
         withContext(Dispatchers.IO) {
             runCatching {
                 val body = buildJsonObject {
                     put("model", model); put("prompt", prompt); put("size", size); put("response_format", "b64_json")
+                    if (seed != null) put("seed", seed)
                 }
                 execute(authorized(Request.Builder().url("$base/images/generations")).post(body.toString().toRequestBody(jsonType)).build()).use { response ->
                     if (!response.isSuccessful) throw ModelResponseException("Image generation failed: HTTP ${response.code}")

@@ -87,7 +87,12 @@ class Handler(BaseHTTPRequestHandler):
                 if self.path == "/v1/images/generations":
                     req = json.loads(body)
                     w, h = (int(x) for x in req.get("size", "256x256").split("x"))
-                    image = sd(req["prompt"], width=w, height=h, num_inference_steps=12).images[0]
+                    # An optional seed makes a render reproducible (same prompt + seed -> same image)
+                    seed = req.get("seed")
+                    generator = None if seed is None else torch.Generator("cpu").manual_seed(int(seed))
+                    image = sd(
+                        req["prompt"], width=w, height=h, num_inference_steps=12, generator=generator
+                    ).images[0]
                     out = io.BytesIO()
                     image.save(out, format="PNG")
                     return self._send(

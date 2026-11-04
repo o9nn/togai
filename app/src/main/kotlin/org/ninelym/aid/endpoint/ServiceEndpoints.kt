@@ -391,8 +391,12 @@ class ImageEndpoint(
         val file = File(imagePath)
         if (!file.isFile) return AIDResult.Error(AIDErrorCode.INVALID_REQUEST, "Image not found: $imagePath")
         val mime = if (imagePath.endsWith(".jpg", true) || imagePath.endsWith(".jpeg", true)) "image/jpeg" else "image/png"
+        // Analysis is a factual description, so sample conservatively unless the caller asks otherwise
+        val temperature = (request.parameters["temperature"] as? Number)?.toFloat() ?: 0.2f
         val endpoint = visionProvider().getOrElse { return modelUnavailable(it) }
-        return endpoint.describeImage(file.readBytes(), question, mime).toEndpointResult { description ->
+        return endpoint.describeImage(
+            file.readBytes(), question, mime, org.ninelym.llm.GenerationOptions(temperature = temperature)
+        ).toEndpointResult { description ->
             mapOf("imagePath" to imagePath, "description" to description, "model" to endpoint.modelId)
         }
     }
