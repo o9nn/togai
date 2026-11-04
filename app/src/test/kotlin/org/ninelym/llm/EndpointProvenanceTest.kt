@@ -123,7 +123,9 @@ class EndpointProvenanceTest {
 
     @Test
     fun `voice endpoint returns the TTS model's audio and the speech model's transcription`(): Unit = runBlocking {
-        val voice = VoiceEndpoint({ Result.success(mediaThroughRelay()) })
+        // Resolve the served model first, so a missing model skips the test instead of failing initialize()
+        val media = mediaThroughRelay()
+        val voice = VoiceEndpoint({ Result.success(media) })
         assertTrue(voice.initialize() is AIDResult.Success)
 
         val spoken = voice.handle(
