@@ -106,35 +106,8 @@ class Phase6Demo {
         println("   • Phase5IntegrationTest: 12 integration validation tests")
         println("   • TensorValidationFrameworkTest: 11 tensor validation tests")
         
-        println("\n🎯 Test Coverage Metrics:")
-        println("""
-           • Unit Test Coverage: 92% (>${(10+12+14+12+11)} test methods)
-           • Integration Coverage: 95% (comprehensive system integration)
-           • Performance Benchmarks: ✅ All systems under target thresholds
-           • Stress Testing: ✅ System stable under 200+ cognitive elements
-           • Edge Case Coverage: ✅ Boundary conditions and failure modes tested
-        """.trimIndent())
-        
-        println("\n🔬 Executing Sample Test Validation...")
-        
-        // Simulate test execution results
-        val testResults = mapOf(
-            "Meta-cognitive introspection" to true,
-            "Evolutionary optimization" to true,
-            "Recursive verification" to true,
-            "Tensor signature validation" to true,
-            "System integration" to true,
-            "Performance benchmarks" to true,
-            "Stress conditions" to true
-        )
-        
-        testResults.forEach { (testName, passed) ->
-            val status = if (passed) "✅ PASS" else "❌ FAIL"
-            println("   $status $testName")
-        }
-        
-        val passRate = testResults.values.count { it } * 100 / testResults.size
-        println("\n📈 Overall Test Pass Rate: $passRate%")
+        // Results come from actually running the suite, not from this demo
+        println("\n🎯 Run `./gradlew :app:testDebugUnitTest` for real coverage and pass/fail results.")
         println("")
     }
     

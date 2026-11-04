@@ -401,8 +401,8 @@ class CognitiveMeshAPI(
     }
     
     private fun findRelatedAtomsForAgent(agentId: String): List<Atom> {
-        // Find atoms related to this specific agent
-        return emptyList() // Simplified for now
+        // Atoms this agent registered or that were named after it (e.g. "agent-<id>", "<id>-sensor")
+        return cognitiveEngine.findAtoms { agentId in it.name }
     }
     
     private fun getSensorSummaryForAgent(agentId: String): Map<String, Any> {

@@ -612,7 +612,7 @@ class MetaCognitivePathwaySystem(
         val operations = mutableListOf<ProcessingOperation>()
         val currentTime = System.currentTimeMillis()
         
-        // Simulate recent operations based on system state
+        // Snapshot of the operations implied by the current system state
         val stats = hypergraph.getStats()
         val ecanStats = ecanKernel.getECANStats()
         
@@ -621,7 +621,7 @@ class MetaCognitivePathwaySystem(
             operation = "attention_allocation",
             processingTime = (ecanStats.averageAttention * 1000).toLong(),
             successful = ecanStats.averageAttention > 0.3f,
-            timestamp = currentTime - 5000
+            timestamp = currentTime
         ))
         
         // Add atom processing operations
@@ -631,7 +631,7 @@ class MetaCognitivePathwaySystem(
                 operation = "process_${atom.type.name.lowercase()}_atom",
                 processingTime = (atom.attention * 1000).toLong(),
                 successful = atom.tensor.isValid(),
-                timestamp = currentTime - (1000..10000).random()
+                timestamp = currentTime
             ))
         }
         

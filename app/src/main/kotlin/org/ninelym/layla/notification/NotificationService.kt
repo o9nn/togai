@@ -161,13 +161,7 @@ class NotificationService(
     ): Result<String> {
         return withContext(Dispatchers.Default) {
             try {
-                // Stub: In actual implementation, would use Notifee trigger notifications
-                // await notifee.createTriggerNotification(
-                //     notification,
-                //     { type: TimestampTrigger, timestamp: triggerAt }
-                // )
-                
-                // Schedule with coroutine
+                // Fires from this process while it is alive
                 scope.launch {
                     val delay = triggerAt - System.currentTimeMillis()
                     if (delay > 0) {
@@ -189,9 +183,7 @@ class NotificationService(
     suspend fun cancelNotification(notificationId: String): Result<Unit> {
         return withContext(Dispatchers.Main) {
             try {
-                // Stub: In actual implementation, would use Notifee
-                // await notifee.cancelNotification(notificationId)
-                
+                context?.let { androidx.core.app.NotificationManagerCompat.from(it).cancel(notificationId.hashCode()) }
                 _notifications.value = _notifications.value.filter { it.id != notificationId }
                 
                 Result.success(Unit)
@@ -207,9 +199,7 @@ class NotificationService(
     suspend fun cancelAllNotifications(): Result<Unit> {
         return withContext(Dispatchers.Main) {
             try {
-                // Stub: In actual implementation, would use Notifee
-                // await notifee.cancelAllNotifications()
-                
+                context?.let { androidx.core.app.NotificationManagerCompat.from(it).cancelAll() }
                 _notifications.value = emptyList()
                 
                 Result.success(Unit)
@@ -225,13 +215,13 @@ class NotificationService(
     fun createChannel(channel: NotificationChannel) {
         channels[channel.id] = channel
         
-        // Stub: In actual implementation, would use Android NotificationChannel API
-        // val androidChannel = NotificationChannel(
-        //     channel.id,
-        //     channel.name,
-        //     channel.importance
-        // )
-        // notificationManager.createNotificationChannel(androidChannel)
+        context?.let {
+            androidx.core.app.NotificationManagerCompat.from(it).createNotificationChannel(
+                androidx.core.app.NotificationChannelCompat.Builder(
+                    channel.id, android.app.NotificationManager.IMPORTANCE_DEFAULT
+                ).setName(channel.name).setDescription(channel.description).build()
+            )
+        }
     }
     
     /**

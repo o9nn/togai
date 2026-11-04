@@ -302,7 +302,7 @@ class SharingService(
     }
     
     private fun convertToHtml(markdown: String): String {
-        // Placeholder: Simple markdown to HTML conversion
+        // Minimal conversion: paragraphs only
         return "<html><body><p>${markdown.replace("\n", "</p><p>")}</p></body></html>"
     }
     
@@ -440,7 +440,7 @@ class SharingService(
             ExportFormat.TXT -> formatAsText(data)
             ExportFormat.MARKDOWN -> formatAsMarkdown(data)
             ExportFormat.HTML -> formatAsHtml(data)
-            ExportFormat.PDF -> formatAsJson(data) // Placeholder
+            ExportFormat.PDF -> throw UnsupportedOperationException("PDF export isn't supported; use MARKDOWN or HTML")
         }
     }
     

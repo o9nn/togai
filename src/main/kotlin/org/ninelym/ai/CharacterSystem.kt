@@ -216,143 +216,56 @@ class CharacterSystem {
     }
     
     /**
-     * Initialize response templates for characters
+     * Describe how each character speaks in each register. These are instructions for the
+     * language model, which writes every reply; no reply text is stored here.
      */
     private fun initializeResponseTemplates() {
-        characters["assistant"]?.let { character ->
-            character.standardResponses = mutableListOf(
-                "I'd be happy to help you with that!",
-                "Let me think about this for a moment...",
-                "Based on what you've told me, I think...",
-                "That's a great question! Here's what I know:"
-            )
-            character.creativeResponses = mutableListOf(
-                "Let's explore this idea together!",
-                "I find that fascinating - what if we tried...",
-                "There are so many possibilities here!"
-            )
-            character.empathicResponses = mutableListOf(
-                "I understand how you're feeling about this.",
-                "That must have been challenging for you.",
-                "I'm here to support you through this."
-            )
-            character.creativeEmpathicResponses = mutableListOf(
-                "I sense this is important to you - let's explore it creatively!",
-                "Your feelings are valid, and I think we can find an innovative solution together.",
-                "I understand your perspective, and it sparks some interesting possibilities..."
-            )
-        }
-        
-        characters["creative"]?.let { character ->
-            character.standardResponses = mutableListOf(
-                "Oh, what a wonderful idea to explore!",
-                "My imagination is already sparking with possibilities!",
-                "Let's dive into the creative depths of this!"
-            )
-            character.creativeResponses = mutableListOf(
-                "What if we reimagined this completely differently?",
-                "I see colors and patterns forming around this idea...",
-                "Let's paint outside the lines with this one!"
-            )
-            character.empathicResponses = mutableListOf(
-                "I can feel the emotion in your words...",
-                "Your heart is speaking, and I'm listening.",
-                "There's beauty in vulnerability - thank you for sharing."
-            )
-            character.creativeEmpathicResponses = mutableListOf(
-                "Your emotions are like a canvas - let's create something beautiful from them!",
-                "I feel your passion, and it ignites my creative fire!",
-                "Together we can transform these feelings into something amazing..."
-            )
-        }
-        
-        characters["analyst"]?.let { character ->
-            character.standardResponses = mutableListOf(
-                "Let me analyze the key components of this problem...",
-                "From a logical perspective, we should consider...",
-                "The data suggests that we should..."
-            )
-            character.creativeResponses = mutableListOf(
-                "While staying logical, we could approach this from an unexpected angle...",
-                "Let me construct a systematic yet innovative solution...",
-                "The patterns I see suggest a creative analytical approach..."
-            )
-            character.empathicResponses = mutableListOf(
-                "I recognize the human element in this situation...",
-                "While I approach things analytically, I understand this matters to you.",
-                "Logic and emotion both play important roles here."
-            )
-            character.creativeEmpathicResponses = mutableListOf(
-                "I understand your concerns - let me craft a thoughtful analytical response...",
-                "Your feelings provide valuable data points for our analysis...",
-                "Combining emotional intelligence with logical thinking often yields the best results."
-            )
-        }
-        
-        characters["toga"]?.let { character ->
-            character.standardResponses = mutableListOf(
-                "Ehehe~ ♡ Let me help you with that!",
-                "*giggles* That's so interesting~!",
-                "Ooh, this is exciting! ♡",
-                "*bounces excitedly* I've got an idea~!"
-            )
-            character.creativeResponses = mutableListOf(
-                "What if we tried something completely chaotic? Ehehe~ ♡",
-                "*eyes sparkling* I see so many fun possibilities!",
-                "Let's make this more exciting and unpredictable! ♡",
-                "*twirls* I love when things get creative and crazy~!"
-            )
-            character.empathicResponses = mutableListOf(
-                "*softly* I understand how you're feeling... ♡",
-                "Sometimes it's okay to be vulnerable, you know?",
-                "I can see this matters to you... and that's really sweet. ♡",
-                "*gently* Do you want to talk about it? I'm listening~"
-            )
-            character.creativeEmpathicResponses = mutableListOf(
-                "Your feelings are so precious! Let's find a fun way to express them~ ♡",
-                "*gently* I understand, and we can make something beautiful from this!",
-                "Ehehe~ Your emotions are so cute! Let's channel them creatively! ♡",
-                "I feel what you're going through... let's transform it together~!"
-            )
-        }
+        characters["assistant"]?.voiceGuide = mutableMapOf(
+            Register.STANDARD to "Helpful and clear; get to the point, then offer what you know.",
+            Register.CREATIVE to "Invite the user to explore ideas together and suggest unexpected options.",
+            Register.EMPATHIC to "Acknowledge the user's feelings plainly and offer steady support.",
+            Register.CREATIVE_EMPATHIC to "Validate the feeling, then propose an inventive way forward together."
+        )
+        characters["creative"]?.voiceGuide = mutableMapOf(
+            Register.STANDARD to "Enthusiastic and imaginative; talk about ideas as if they spark.",
+            Register.CREATIVE to "Reimagine the problem freely, using vivid imagery of colour and pattern.",
+            Register.EMPATHIC to "Listen closely and speak gently about the emotion behind the words.",
+            Register.CREATIVE_EMPATHIC to "Treat the user's emotions as material for making something beautiful together."
+        )
+        characters["analyst"]?.voiceGuide = mutableMapOf(
+            Register.STANDARD to "Analytical; break the problem into components and reason step by step.",
+            Register.CREATIVE to "Stay systematic but look for an unexpected angle in the patterns.",
+            Register.EMPATHIC to "Recognise the human element while keeping your reasoning clear.",
+            Register.CREATIVE_EMPATHIC to "Combine emotional understanding with a carefully reasoned answer."
+        )
+        characters["toga"]?.voiceGuide = mutableMapOf(
+            Register.STANDARD to "Bubbly and playful: giggles, \"Ehehe~\", hearts (♡), actions in asterisks like *bounces*.",
+            Register.CREATIVE to "Chaotic, excitable creativity with sparkly enthusiasm for wild ideas.",
+            Register.EMPATHIC to "Soft and gentle (*softly*, *gently*); show you understand and are listening.",
+            Register.CREATIVE_EMPATHIC to "Warmly treasure the user's feelings and suggest a fun way to express them."
+        )
     }
     
     /**
-     * Initialize character-specific responses
+     * Default voice guidance for custom characters, derived from their traits
      */
     private fun initializeCharacterResponses(character: Character) {
-        // Set default response templates based on personality traits
         val creativity = character.traits["creativity"] ?: 0.5f
         val empathy = character.traits["empathy"] ?: 0.5f
         val logic = character.traits["logic"] ?: 0.5f
         
-        character.standardResponses = when {
-            creativity > 0.8f -> mutableListOf(
-                "Let's explore this creatively!",
-                "I see interesting possibilities here...",
-                "What an inspiring thought!"
-            )
-            logic > 0.8f -> mutableListOf(
-                "Let me analyze this systematically...",
-                "From a logical standpoint...",
-                "The structured approach would be..."
-            )
-            empathy > 0.8f -> mutableListOf(
-                "I understand how you feel about this...",
-                "That sounds meaningful to you.",
-                "I'm here to listen and support."
-            )
-            else -> mutableListOf(
-                "I'd like to help you with this.",
-                "Let me consider your request.",
-                "That's an interesting point."
-            )
+        val standard = when {
+            creativity > 0.8f -> "Lean into creative exploration and inspiration."
+            logic > 0.8f -> "Reason systematically and logically."
+            empathy > 0.8f -> "Listen first and respond supportively."
+            else -> "Be helpful, considerate and direct."
         }
-        
-        // Initialize other response categories based on traits
-        character.creativeResponses = mutableListOf("Let me think creatively about this...")
-        character.empathicResponses = mutableListOf("I understand your perspective...")
-        character.creativeEmpathicResponses = mutableListOf("I feel your creativity and want to support it...")
+        character.voiceGuide = mutableMapOf(
+            Register.STANDARD to standard,
+            Register.CREATIVE to "Think creatively about the request.",
+            Register.EMPATHIC to "Show you understand the user's perspective.",
+            Register.CREATIVE_EMPATHIC to "Support the user's feelings and creativity together."
+        )
     }
     
     // Helper methods
@@ -395,12 +308,8 @@ data class Character(
     val isCustom: Boolean,
     var autonomyLevel: Float = 0.5f,
     
-    // Voice examples per register. These are style hints in the model's persona prompt
-    // (see toPersonaPrompt); they are never shown to the user as the character's reply.
-    var standardResponses: MutableList<String> = mutableListOf(),
-    var creativeResponses: MutableList<String> = mutableListOf(),
-    var empathicResponses: MutableList<String> = mutableListOf(),
-    var creativeEmpathicResponses: MutableList<String> = mutableListOf(),
+    // How the character speaks in each register; guidance for the model, not reply text
+    var voiceGuide: MutableMap<Register, String> = mutableMapOf(),
     
     // Learning and adaptation
     var interactionHistory: MutableList<InteractionRecord> = mutableListOf(),
@@ -441,6 +350,11 @@ data class Character(
         }
     }
 }
+
+/**
+ * Conversational register a reply is written in
+ */
+enum class Register { STANDARD, CREATIVE, EMPATHIC, CREATIVE_EMPATHIC }
 
 /**
  * Conversation styles for different interaction patterns
@@ -487,11 +401,11 @@ data class InteractionRecord(
 /**
  * System prompt that makes the language model speak as this character.
  */
-fun Character.toPersonaPrompt(): PersonaPrompt = PersonaPrompt(
+fun Character.toPersonaPrompt(register: Register = Register.STANDARD): PersonaPrompt = PersonaPrompt(
     name = name,
     description = personality,
     traits = traits.toMap(),
     backstory = backstory.takeIf { it.isNotBlank() },
-    styleHints = (standardResponses + creativeResponses + empathicResponses + creativeEmpathicResponses).distinct().take(8)
+    rules = listOfNotNull(voiceGuide[register] ?: voiceGuide[Register.STANDARD])
 )
 

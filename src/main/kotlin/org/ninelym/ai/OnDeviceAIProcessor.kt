@@ -194,19 +194,19 @@ class OnDeviceAIProcessor(
         val creativity = tensor.depth
         val empathy = tensor.context
         val register = when {
-            creativity > 0.7f && empathy > 0.6f -> "Be imaginative and emotionally supportive in this reply."
-            creativity > 0.7f -> "Be imaginative and inventive in this reply."
-            empathy > 0.6f -> "Be especially warm and empathetic in this reply."
-            else -> "Answer helpfully and naturally."
+            creativity > 0.7f && empathy > 0.6f -> Register.CREATIVE_EMPATHIC
+            creativity > 0.7f -> Register.CREATIVE
+            empathy > 0.6f -> Register.EMPATHIC
+            else -> Register.STANDARD
         }
         val task = buildString {
-            append(register)
+            append("Reply to the user's message.")
             if (context.topicFocus.isNotBlank()) append(" The conversation is about ${context.topicFocus}.")
             if (context.emotionalState != EmotionalState.NEUTRAL) {
                 append(" The user seems ${context.emotionalState.name.lowercase()}.")
             }
         }
-        return character.toPersonaPrompt().respond(model, input, task)
+        return character.toPersonaPrompt(register).respond(model, input, task)
     }
     
     // Analysis helper methods

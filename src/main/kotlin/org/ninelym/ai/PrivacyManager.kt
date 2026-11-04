@@ -455,12 +455,17 @@ class PrivacyManager {
         }
     }
     
+    private val cleanupTimer by lazy { java.util.Timer("privacy-cleanup", true) }
+    
     private fun scheduleAutomaticCleanup() {
-        // In a real implementation, this would use a proper scheduler
-        // For now, we'll just mark the flag
+        // Enforce the retention policy now and then once a day while the process runs
+        val day = 24L * 60 * 60 * 1000
+        cleanupTimer.scheduleAtFixedRate(object : java.util.TimerTask() {
+            override fun run() { cleanupOldData() }
+        }, 0L, day)
         logPrivacyEvent(
             PrivacyEventType.SYSTEM_CONFIG,
-            "Automatic cleanup scheduled"
+            "Automatic cleanup scheduled (daily)"
         )
     }
 }
@@ -478,30 +483,18 @@ private class DataEncryption {
         secretKey = keyGenerator.generateKey()
     }
     
+    /** AES-256-GCM; output is base64(iv || ciphertext). Failures propagate: data is never stored unencrypted. */
     fun encrypt(data: String): String {
-        // Simplified encryption - in production, use proper IV and padding
-        return try {
-            val cipher = Cipher.getInstance("AES")
-            cipher.init(Cipher.ENCRYPT_MODE, secretKey)
-            val encryptedData = cipher.doFinal(data.toByteArray())
-            Base64.getEncoder().encodeToString(encryptedData)
-        } catch (e: Exception) {
-            // Fallback to base64 encoding if encryption fails
-            Base64.getEncoder().encodeToString(data.toByteArray())
-        }
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, secretKey)
+        return Base64.getEncoder().encodeToString(cipher.iv + cipher.doFinal(data.toByteArray()))
     }
     
     fun decrypt(encryptedData: String): String {
-        return try {
-            val cipher = Cipher.getInstance("AES")
-            cipher.init(Cipher.DECRYPT_MODE, secretKey)
-            val decodedData = Base64.getDecoder().decode(encryptedData)
-            val decryptedData = cipher.doFinal(decodedData)
-            String(decryptedData)
-        } catch (e: Exception) {
-            // Fallback to base64 decoding if decryption fails
-            String(Base64.getDecoder().decode(encryptedData))
-        }
+        val sealed = Base64.getDecoder().decode(encryptedData)
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.DECRYPT_MODE, secretKey, javax.crypto.spec.GCMParameterSpec(128, sealed.copyOfRange(0, 12)))
+        return String(cipher.doFinal(sealed.copyOfRange(12, sealed.size)))
     }
 }
 

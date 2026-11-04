@@ -90,7 +90,8 @@ class AdvancedTaskerWorkflowService(
             val completedExecution = execution.copy(
                 endTime = System.currentTimeMillis(),
                 status = if (result.isSuccess) WorkflowStatus.COMPLETED else WorkflowStatus.FAILED,
-                result = result.getOrNull()
+                result = result.getOrNull(),
+                error = result.exceptionOrNull()?.message
             )
             
             _activeWorkflows.value = _activeWorkflows.value.filter { it.id != execution.id }
@@ -290,23 +291,41 @@ class AdvancedTaskerWorkflowService(
             totalExecutions = executions.size,
             successRate = successful.toDouble() / executions.size,
             averageExecutionTime = executionTimes.average().toLong(),
-            failureReasons = emptyMap() // Placeholder
+            failureReasons = executions.filter { it.status == WorkflowStatus.FAILED }
+                .groupingBy { it.error ?: "unknown" }.eachCount()
         )
     }
     
     /**
      * Optimize workflow based on execution history
      */
-    fun optimizeWorkflow(workflowId: String): Result<Workflow> {
+    suspend fun optimizeWorkflow(workflowId: String): Result<Workflow> {
         return try {
             val workflow = _workflows.value.find { it.id == workflowId }
                 ?: return Result.failure(Exception("Workflow not found: $workflowId"))
             
             val analytics = analyzeWorkflow(workflowId)
+            val model = modelProvider().getOrThrow()
             
-            // Placeholder: In production, use ML to optimize workflow
-            // For now, just return the original workflow
-            Result.success(workflow)
+            // The model rewrites each AI step's prompt in light of how the workflow has performed;
+            // step structure (and therefore branching) is left intact
+            val history = "Runs: ${analytics.totalExecutions}, success rate ${"%.0f".format(analytics.successRate * 100)}%" +
+                if (analytics.failureReasons.isNotEmpty()) ", failures: ${analytics.failureReasons}" else ""
+            val steps = workflow.steps.map { step ->
+                val action = step.action as? WorkflowAction.AIInference ?: return@map step
+                val improved = model.ask(
+                    "You improve prompts used inside an automation workflow named \"${workflow.name}\" " +
+                        "(${workflow.description}). $history. Rewrite the prompt to be clearer and more reliable. " +
+                        "Keep every {{variable}} placeholder exactly. Output only the new prompt.",
+                    action.prompt,
+                    GenerationOptions(temperature = 0.2f, maxTokens = 300)
+                ).getOrThrow().trim()
+                val keepsVariables = Regex("\\{\\{\\w+}}").findAll(action.prompt).all { it.value in improved }
+                if (keepsVariables && improved.isNotBlank()) step.copy(action = WorkflowAction.AIInference(improved)) else step
+            }
+            val optimized = workflow.copy(steps = steps)
+            _workflows.value = _workflows.value.map { if (it.id == workflowId) optimized else it }
+            Result.success(optimized)
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -396,7 +415,8 @@ data class WorkflowExecution(
     val endTime: Long? = null,
     val status: WorkflowStatus,
     val context: MutableMap<String, Any>,
-    val result: Any? = null
+    val result: Any? = null,
+    val error: String? = null
 )
 
 enum class WorkflowStatus {

@@ -241,6 +241,11 @@ class CognitiveEngine(
     /**
      * Convert hypergraph atoms back to Scheme expression
      */
+    /**
+     * Atoms whose name matches [predicate]
+     */
+    fun findAtoms(predicate: (Atom) -> Boolean): List<Atom> = hypergraph.getAllAtoms().filter(predicate)
+    
     fun generateSchemeExpression(atomType: AtomType? = null): String {
         val atoms = if (atomType != null) {
             hypergraph.getAtomsByType(atomType)

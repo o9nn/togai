@@ -79,44 +79,14 @@ class BillingService {
     /**
      * Acknowledge a purchase
      */
-    suspend fun acknowledgePurchase(purchaseId: String): Result<Unit> {
-        return try {
-            val purchase = _purchases.value.find { it.id == purchaseId }
-                ?: return Result.failure(Exception("Purchase not found: $purchaseId"))
-            
-            if (purchase.acknowledged) {
-                return Result.success(Unit)
-            }
-            
-            // Simulate acknowledgment
-            // In production, use BillingClient.acknowledgePurchase()
-            _purchases.value = _purchases.value.map {
-                if (it.id == purchaseId) it.copy(acknowledged = true) else it
-            }
-            
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
+    suspend fun acknowledgePurchase(purchaseId: String): Result<Unit> =
+        Result.failure(UnsupportedOperationException("acknowledgePurchase requires the Google Play Billing client, which isn't bundled"))
     
     /**
      * Consume a purchase (for consumable products)
      */
-    suspend fun consumePurchase(purchaseId: String): Result<Unit> {
-        return try {
-            val purchase = _purchases.value.find { it.id == purchaseId }
-                ?: return Result.failure(Exception("Purchase not found: $purchaseId"))
-            
-            // Simulate consumption
-            // In production, use BillingClient.consumeAsync()
-            _purchases.value = _purchases.value.filter { it.id != purchaseId }
-            
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
+    suspend fun consumePurchase(purchaseId: String): Result<Unit> =
+        Result.failure(UnsupportedOperationException("consumePurchase requires the Google Play Billing client, which isn't bundled"))
     
     /**
      * Upgrade or downgrade a subscription
@@ -124,59 +94,14 @@ class BillingService {
     suspend fun changeSubscription(
         oldProductId: String,
         newProductId: String
-    ): Result<Subscription> {
-        return try {
-            val oldSubscription = _subscriptions.value.find { it.productId == oldProductId }
-                ?: return Result.failure(Exception("Subscription not found: $oldProductId"))
-            
-            val newProduct = _products.value.find { it.id == newProductId }
-                ?: return Result.failure(Exception("Product not found: $newProductId"))
-            
-            if (newProduct.type != ProductType.SUBSCRIPTION) {
-                return Result.failure(Exception("New product must be a subscription"))
-            }
-            
-            // Simulate subscription change
-            // In production, use BillingFlowParams with subscription update params
-            val newSubscription = oldSubscription.copy(
-                id = "sub_${System.currentTimeMillis()}",
-                productId = newProductId,
-                expiryTime = System.currentTimeMillis() + getSubscriptionDuration(newProductId)
-            )
-            
-            _subscriptions.value = _subscriptions.value.map {
-                if (it.id == oldSubscription.id) newSubscription else it
-            }
-            
-            Result.success(newSubscription)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
+    ): Result<Subscription> =
+        Result.failure(UnsupportedOperationException("Changing subscriptions requires the Google Play Billing client, which isn't bundled"))
     
     /**
      * Cancel a subscription
      */
-    suspend fun cancelSubscription(subscriptionId: String): Result<Unit> {
-        return try {
-            val subscription = _subscriptions.value.find { it.id == subscriptionId }
-                ?: return Result.failure(Exception("Subscription not found: $subscriptionId"))
-            
-            // Simulate subscription cancellation
-            // Note: User must cancel through Google Play Store
-            _subscriptions.value = _subscriptions.value.map {
-                if (it.id == subscriptionId) {
-                    it.copy(autoRenewing = false, status = SubscriptionStatus.CANCELLED)
-                } else {
-                    it
-                }
-            }
-            
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
+    suspend fun cancelSubscription(subscriptionId: String): Result<Unit> =
+        Result.failure(UnsupportedOperationException("cancelSubscription requires the Google Play Billing client, which isn't bundled"))
     
     /**
      * Verify license validity
