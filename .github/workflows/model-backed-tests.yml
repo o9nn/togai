@@ -1,0 +1,98 @@
+name: Model-backed Tests
+
+# Runs the app's unit tests against real locally served models: a chat model (llama.cpp),
+# speech-to-text / text-to-speech / Stable Diffusion (scripts/local_media_server.py) and a
+# vision model (nanoLLaVA via llama.cpp). Nothing is mocked: the tests that exercise character
+# output, voice, images and vision only pass if the served models produce it.
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  model-backed:
+    name: Unit tests with served models
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache models
+        uses: actions/cache@v4
+        with:
+          path: models
+          key: served-models-v1
+
+      - name: Install model servers
+        run: |
+          python -m pip install --upgrade pip
+          pip install 'llama-cpp-python[server]==0.3.36' \
+            --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install faster-whisper piper-tts diffusers transformers accelerate pillow huggingface_hub
+
+      - name: Download models
+        run: |
+          python - <<'EOF'
+          from pathlib import Path
+          from huggingface_hub import hf_hub_download, snapshot_download
+          m = Path("models"); m.mkdir(exist_ok=True)
+          hf_hub_download("Qwen/Qwen2.5-0.5B-Instruct-GGUF", "qwen2.5-0.5b-instruct-q4_k_m.gguf", local_dir=m)
+          for f in ["nanollava-mmproj-f16.gguf", "nanollava-text-model-f16.gguf"]:
+              hf_hub_download("abetlen/nanollava-gguf", f, local_dir=m / "nanollava")
+          snapshot_download("Systran/faster-whisper-tiny", local_dir=m / "media" / "whisper-tiny")
+          for f in ["en/en_US/lessac/low/en_US-lessac-low.onnx", "en/en_US/lessac/low/en_US-lessac-low.onnx.json"]:
+              hf_hub_download("rhasspy/piper-voices", f, local_dir=m / "media" / "piper")
+          snapshot_download("segmind/tiny-sd", local_dir=m / "media" / "tiny-sd", allow_patterns=["*.json", "*.txt", "*.bin"])
+          EOF
+
+      - name: Serve models
+        run: |
+          nohup python -m llama_cpp.server --model models/qwen2.5-0.5b-instruct-q4_k_m.gguf \
+            --model_alias qwen2.5-0.5b-instruct --host 127.0.0.1 --port 8080 --n_ctx 4096 > chat.log 2>&1 &
+          nohup python scripts/local_media_server.py models/media 8081 > media.log 2>&1 &
+          nohup python -m llama_cpp.server --model models/nanollava/nanollava-text-model-f16.gguf \
+            --clip_model_path models/nanollava/nanollava-mmproj-f16.gguf --chat_format nanollava \
+            --model_alias nanollava --host 127.0.0.1 --port 8082 --n_ctx 4096 > vision.log 2>&1 &
+          for port in 8080 8081 8082; do
+            for i in $(seq 1 120); do curl -sf http://127.0.0.1:$port/v1/models >/dev/null && break; sleep 2; done
+            curl -sf http://127.0.0.1:$port/v1/models || (tail -50 chat.log media.log vision.log; exit 1)
+          done
+
+      - name: Run unit tests against the served models
+        env:
+          TOGAI_LLM_BASE_URL: http://127.0.0.1:8080/v1
+          TOGAI_LLM_MODEL: qwen2.5-0.5b-instruct
+          TOGAI_MEDIA_BASE_URL: http://127.0.0.1:8081/v1
+          TOGAI_VISION_BASE_URL: http://127.0.0.1:8082/v1
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest --stacktrace
+
+      - name: Upload test reports and server logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: model-backed-test-results
+          path: |
+            app/build/reports/tests/
+            app/build/test-results/
+            chat.log
+            media.log
+            vision.log
