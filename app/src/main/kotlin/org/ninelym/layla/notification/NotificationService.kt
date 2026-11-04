@@ -39,7 +39,7 @@ class NotificationService(
      * Show a notification
      */
     suspend fun showNotification(notification: Notification): Result<String> {
-        return withContext(Dispatchers.Main) {
+        return withContext(Dispatchers.Default) {
             try {
                 context?.let { postToSystemTray(it, notification) }
                 
@@ -181,7 +181,7 @@ class NotificationService(
      * Cancel a notification
      */
     suspend fun cancelNotification(notificationId: String): Result<Unit> {
-        return withContext(Dispatchers.Main) {
+        return withContext(Dispatchers.Default) {
             try {
                 context?.let { androidx.core.app.NotificationManagerCompat.from(it).cancel(notificationId.hashCode()) }
                 _notifications.value = _notifications.value.filter { it.id != notificationId }
@@ -197,7 +197,7 @@ class NotificationService(
      * Cancel all notifications
      */
     suspend fun cancelAllNotifications(): Result<Unit> {
-        return withContext(Dispatchers.Main) {
+        return withContext(Dispatchers.Default) {
             try {
                 context?.let { androidx.core.app.NotificationManagerCompat.from(it).cancelAll() }
                 _notifications.value = emptyList()

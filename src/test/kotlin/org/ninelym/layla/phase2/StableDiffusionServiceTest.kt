@@ -5,7 +5,11 @@ import org.ninelym.ai.ImageStyle
 import kotlinx.coroutines.runBlocking
 import org.junit.Test
 import org.junit.Before
+import org.junit.After
 import org.junit.Assert.*
+import org.junit.Assume.assumeTrue
+import org.ninelym.llm.LanguageModels
+import org.ninelym.llm.ModelEndpointConfig
 
 /**
  * Test suite for Stable Diffusion Service
@@ -15,9 +19,19 @@ class StableDiffusionServiceTest {
     
     private lateinit var service: StableDiffusionService
     
+    private val mediaUrl = System.getenv("TOGAI_MEDIA_BASE_URL")
+    
+    /** Images are rendered by a served diffusion model at TOGAI_MEDIA_BASE_URL; skipped without one. */
     @Before
     fun setup() {
+        assumeTrue("TOGAI_MEDIA_BASE_URL not set", mediaUrl != null)
+        LanguageModels.configure(ModelEndpointConfig(mediaUrl!!, "stable-diffusion", timeoutSeconds = 600))
         service = StableDiffusionService()
+    }
+    
+    @After
+    fun restoreModel() {
+        ModelEndpointConfig.fromEnvironment()?.let { LanguageModels.configure(it) }
     }
     
     @Test
@@ -34,10 +48,11 @@ class StableDiffusionServiceTest {
             prompt = "A beautiful sunset over mountains"
         )
         
-        assertTrue("Image generation should succeed", result.isSuccess)
-        val image = result.getOrNull()
-        assertNotNull("Generated image should not be null", image)
-        assertEquals("Prompt should match", "A beautiful sunset over mountains", image?.prompt)
+        assertTrue("Image generation should succeed: ${result.exceptionOrNull()}", result.isSuccess)
+        val image = result.getOrThrow()
+        assertEquals("Prompt should match", "A beautiful sunset over mountains", image.prompt)
+        val png = java.io.File(image.imagePath).readBytes()
+        assertEquals("Rendered file should be a PNG", "PNG", String(png.copyOfRange(1, 4)))
     }
     
     @Test
@@ -46,12 +61,12 @@ class StableDiffusionServiceTest {
         
         val result = service.generateImage(
             prompt = "A futuristic city",
-            style = ImageStyle.CYBERPUNK
+            style = ImageStyle.FANTASY
         )
         
         assertTrue("Image generation should succeed", result.isSuccess)
         val image = result.getOrNull()
-        assertEquals("Style should match", ImageStyle.CYBERPUNK, image?.style)
+        assertEquals("Style should match", ImageStyle.FANTASY, image?.style)
     }
     
     @Test
@@ -74,12 +89,11 @@ class StableDiffusionServiceTest {
         service.initialize()
         
         // Generate multiple images
-        service.generateImage("Image 1")
-        service.generateImage("Image 2")
-        service.generateImage("Image 3")
+        service.generateImage("A lighthouse at night").getOrThrow()
+        service.generateImage("A bowl of oranges").getOrThrow()
         
         val history = service.getHistory()
-        assertEquals("History should contain 3 entries", 3, history.size)
+        assertEquals("History should contain 2 entries", 2, history.size)
     }
     
     @Test
@@ -96,28 +110,21 @@ class StableDiffusionServiceTest {
     }
     
     @Test
-    fun `test active task tracking`() = runBlocking {
+    fun `test no active tasks remain after generation`() = runBlocking {
         service.initialize()
-        
-        // Start generation (in real implementation this would be async)
-        val activeBefore = service.getActiveTasks()
-        
-        service.generateImage("Test")
-        
-        val activeAfter = service.getActiveTasks()
-        // In production, we'd check that tasks are tracked during generation
+        service.generateImage("Test").getOrThrow()
+        assertTrue(service.getActiveTasks().isEmpty())
     }
     
     @Test
     fun `test model loading`() = runBlocking {
         service.initialize()
         
-        val result = service.loadModel("stable-diffusion-xl")
+        val result = service.loadModel("stable-diffusion")
         assertTrue("Model loading should succeed", result.isSuccess)
         
         val currentModel = service.getCurrentModel()
-        assertNotNull("Current model should be set", currentModel)
-        assertEquals("Model name should match", "stable-diffusion-xl", currentModel?.name)
+        assertEquals("Model name should match", "stable-diffusion", currentModel?.name)
     }
     
     @Test
@@ -130,8 +137,7 @@ class StableDiffusionServiceTest {
     fun `test task cancellation`() = runBlocking {
         service.initialize()
         
-        val taskId = "test_task_123"
-        val result = service.cancelTask(taskId)
-        assertTrue("Task cancellation should succeed", result.isSuccess)
+        val result = service.cancelTask("test_task_123")
+        assertTrue("Cancelling an unknown task is a no-op", result.isSuccess)
     }
 }

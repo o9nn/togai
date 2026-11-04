@@ -9,6 +9,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.lang.ref.WeakReference
+import org.ninelym.cognitive.CognitiveTensor
+import org.ninelym.cognitive.hypergraph.Atom
 import kotlin.math.max
 
 /**
@@ -39,8 +41,8 @@ class MemoryOptimizer(private val context: Context) {
     private val objectCache = mutableMapOf<String, WeakReference<Any>>()
     
     // Memory pools for frequent allocations
-    private val tensorPool = TensorMemoryPool(maxSize = 50)
-    private val atomPool = AtomMemoryPool(maxSize = 1000)
+    private val tensorPool = TensorMemoryPool<CognitiveTensor>(maxSize = 50)
+    private val atomPool = AtomMemoryPool<Atom>(maxSize = 1000)
     
     init {
         startMemoryMonitoring()
@@ -215,28 +217,28 @@ class MemoryOptimizer(private val context: Context) {
     /**
      * Get tensor from memory pool or create new
      */
-    fun <T> acquireTensor(creator: () -> T): T {
+    fun acquireTensor(creator: () -> CognitiveTensor): CognitiveTensor {
         return tensorPool.acquire(creator)
     }
     
     /**
      * Release tensor back to memory pool
      */
-    fun <T> releaseTensor(tensor: T) {
+    fun releaseTensor(tensor: CognitiveTensor) {
         tensorPool.release(tensor)
     }
     
     /**
      * Get atom from memory pool or create new
      */
-    fun <T> acquireAtom(creator: () -> T): T {
+    fun acquireAtom(creator: () -> Atom): Atom {
         return atomPool.acquire(creator)
     }
     
     /**
      * Release atom back to memory pool
      */
-    fun <T> releaseAtom(atom: T) {
+    fun releaseAtom(atom: Atom) {
         atomPool.release(atom)
     }
     

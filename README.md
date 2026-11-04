@@ -254,6 +254,17 @@ export TOGAI_LLM_BASE_URL=http://127.0.0.1:8080/v1 TOGAI_LLM_MODEL=qwen2.5-0.5b-
 python -m unittest discover -s tests -t .
 ```
 
+Speech, image and vision features use served models too. `scripts/local_media_server.py`
+serves Whisper (transcription), Piper (TTS) and Stable Diffusion (images) locally, and
+llama.cpp can serve a vision model such as nanoLLaVA:
+
+```bash
+python scripts/local_media_server.py ./media-models 8081
+python -m llama_cpp.server --model nanollava-text-model-f16.gguf \
+    --clip_model_path nanollava-mmproj-f16.gguf --chat_format nanollava --port 8082
+export TOGAI_MEDIA_BASE_URL=http://127.0.0.1:8081/v1 TOGAI_VISION_BASE_URL=http://127.0.0.1:8082/v1
+```
+
 ## Architecture Highlights
 
 Based on comprehensive analysis of **188,678+ smali files**, 9mly implements a sophisticated AI assistant architecture:

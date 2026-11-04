@@ -15,12 +15,20 @@ import org.ninelym.layla.tasker.WorkflowStep
 import org.ninelym.layla.tasker.WorkflowAction
 import org.ninelym.layla.cloud.CloudSyncService
 import org.ninelym.layla.cloud.SyncDataType
+import org.junit.Assume.assumeTrue
+import org.ninelym.layla.chat.ChatService
+import org.ninelym.layla.inference.LaylaInferenceService
+import org.ninelym.layla.notification.NotificationService
+import org.ninelym.llm.ModelEndpointConfig
+import org.ninelym.llm.OpenAICompatibleModel
 import java.io.File
+import org.ninelym.testing.KeyValueHttpServer
 
 /**
  * Phase 3 Integration Tests
  * 
- * Comprehensive test suite for Phase 3: Integration services
+ * Model-dependent tests use the served model (TOGAI_LLM_BASE_URL / TOGAI_LLM_MODEL) and are
+ * skipped without one. Cloud sync runs against a real in-process HTTP key/value store.
  */
 class Phase3IntegrationTest {
     
@@ -29,26 +37,36 @@ class Phase3IntegrationTest {
     private lateinit var sharingService: SharingService
     private lateinit var workflowService: AdvancedTaskerWorkflowService
     private lateinit var cloudSyncService: CloudSyncService
+    private lateinit var notifications: NotificationService
+    private lateinit var syncServer: KeyValueHttpServer
+    private val config = ModelEndpointConfig.fromEnvironment()
+    
+    private fun requireModel() = assumeTrue("no live model configured", config != null)
     
     @Before
     fun setup() {
+        syncServer = KeyValueHttpServer()
+        notifications = NotificationService()
         documentService = DocumentProcessingService()
         billingService = BillingService()
         sharingService = SharingService()
-        workflowService = AdvancedTaskerWorkflowService()
-        cloudSyncService = CloudSyncService()
+        workflowService = AdvancedTaskerWorkflowService(
+            notifier = { message -> notifications.showSimpleNotification("Workflow", message) }
+        )
+        cloudSyncService = CloudSyncService(serverUrl = syncServer.url)
     }
     
     @After
     fun teardown() {
         billingService.disconnect()
         cloudSyncService.disconnect()
+        syncServer.close()
     }
     
     // ===== Document Processing Service Tests =====
     
     @Test
-    fun testDocumentLoading() = runBlocking {
+    fun testDocumentLoading(): Unit = runBlocking {
         // Create a temporary test file
         val testFile = File.createTempFile("test_doc", ".txt")
         testFile.writeText("This is a test document for processing.")
@@ -64,7 +82,7 @@ class Phase3IntegrationTest {
     }
     
     @Test
-    fun testTextExtraction() = runBlocking {
+    fun testTextExtraction(): Unit = runBlocking {
         val testFile = File.createTempFile("test_extract", ".txt")
         val testContent = "Sample text for extraction test."
         testFile.writeText(testContent)
@@ -82,7 +100,8 @@ class Phase3IntegrationTest {
     }
     
     @Test
-    fun testDocumentSummarization() = runBlocking {
+    fun testDocumentSummarization(): Unit = runBlocking {
+        requireModel()
         val testFile = File.createTempFile("test_summary", ".txt")
         testFile.writeText("This is a long document that needs to be summarized. " +
                 "It contains multiple sentences. Each sentence adds more information.")
@@ -100,7 +119,8 @@ class Phase3IntegrationTest {
     }
     
     @Test
-    fun testDocumentQA() = runBlocking {
+    fun testDocumentQA(): Unit = runBlocking {
+        requireModel()
         val testFile = File.createTempFile("test_qa", ".txt")
         testFile.writeText("The capital of France is Paris. It is known for the Eiffel Tower.")
         
@@ -110,13 +130,14 @@ class Phase3IntegrationTest {
         assert(result.isSuccess) { "Q&A should succeed" }
         val answer = result.getOrThrow()
         assert(answer.answer.isNotEmpty()) { "Answer should not be empty" }
-        assert(answer.confidence > 0) { "Confidence should be positive" }
+        assert(answer.answer.contains("Paris", ignoreCase = true)) { "The model should answer from the document" }
         
         testFile.delete()
     }
     
     @Test
-    fun testMultiDocumentAnalysis() = runBlocking {
+    fun testMultiDocumentAnalysis(): Unit = runBlocking {
+        requireModel()
         val doc1 = File.createTempFile("doc1", ".txt")
         val doc2 = File.createTempFile("doc2", ".txt")
         
@@ -141,7 +162,8 @@ class Phase3IntegrationTest {
     }
     
     @Test
-    fun testDocumentCategorization() = runBlocking {
+    fun testDocumentCategorization(): Unit = runBlocking {
+        requireModel()
         val testFile = File.createTempFile("test_category", ".txt")
         testFile.writeText("This is a technical document about software development and API design.")
         
@@ -151,7 +173,7 @@ class Phase3IntegrationTest {
         assert(result.isSuccess) { "Categorization should succeed" }
         val category = result.getOrThrow()
         assert(category.primaryCategory.isNotEmpty()) { "Primary category should be assigned" }
-        assert(category.confidence > 0) { "Confidence should be positive" }
+        assert(category.tags.isNotEmpty() || category.subcategories.isNotEmpty()) { "The model should tag the document" }
         
         testFile.delete()
     }
@@ -159,93 +181,47 @@ class Phase3IntegrationTest {
     // ===== Billing Service Tests =====
     
     @Test
-    fun testBillingInitialization() = runBlocking {
-        val result = billingService.initialize()
-        
-        assert(result.isSuccess) { "Billing initialization should succeed" }
-        assert(billingService.products.value.isNotEmpty()) { "Products should be loaded" }
-    }
-    
-    @Test
-    fun testProductListing() = runBlocking {
-        billingService.initialize()
-        
-        val products = billingService.products.value
-        assert(products.size >= 3) { "Should have at least 3 products" }
-        assert(products.any { it.id == "premium_monthly" }) { "Should have premium monthly product" }
-        assert(products.any { it.id == "premium_yearly" }) { "Should have premium yearly product" }
-    }
-    
-    @Test
-    fun testPurchaseFlow() = runBlocking {
-        billingService.initialize()
-        
-        val result = billingService.purchase("premium_monthly")
-        
-        assert(result.isSuccess) { "Purchase should succeed" }
-        val purchase = result.getOrThrow()
-        assert(purchase.productId == "premium_monthly") { "Purchase should be for correct product" }
-        assert(purchase.acknowledged == false) { "Purchase should not be acknowledged yet" }
-    }
-    
-    @Test
-    fun testSubscriptionManagement() = runBlocking {
-        billingService.initialize()
-        
-        // Purchase a subscription
-        val purchase = billingService.purchase("premium_monthly").getOrThrow()
-        billingService.acknowledgePurchase(purchase.id)
-        
-        // Check if subscription is active
-        val hasPremium = billingService.hasPremiumSubscription()
-        assert(hasPremium) { "Should have active premium subscription" }
-        
-        val activeSubscription = billingService.getActiveSubscription()
-        assert(activeSubscription != null) { "Should have active subscription" }
-    }
-    
-    @Test
-    fun testSubscriptionUpgrade() = runBlocking {
-        billingService.initialize()
-        
-        // Purchase monthly subscription
-        billingService.purchase("premium_monthly")
-        
-        // Upgrade to yearly
-        val result = billingService.changeSubscription("premium_monthly", "premium_yearly")
-        
-        assert(result.isSuccess) { "Subscription upgrade should succeed" }
-        val newSubscription = result.getOrThrow()
-        assert(newSubscription.productId == "premium_yearly") { "Should be upgraded to yearly" }
+    fun testBillingNeverFakesPurchases(): Unit = runBlocking {
+        // No Play Billing client is bundled: nothing may report a purchase, license or product
+        assert(billingService.initialize().isFailure) { "Billing must not connect without Play Billing" }
+        assert(billingService.products.value.isEmpty()) { "No invented products" }
+        assert(billingService.purchase("premium_monthly").isFailure) { "No purchase without Play Billing" }
+        assert(billingService.verifyLicense().isFailure) { "No unverified license reported as valid" }
+        assert(billingService.applyPromoCode("SAVE20").isFailure) { "No invented promo offer" }
+        assert(!billingService.hasPremiumSubscription()) { "No subscription exists" }
     }
     
     // ===== Sharing Service Tests =====
     
     @Test
-    fun testTextSharing() = runBlocking {
-        val result = sharingService.shareText(
-            text = "Test content to share",
-            title = "Test Share",
-            format = ShareFormat.PLAIN_TEXT
-        )
-        
-        assert(result.isSuccess) { "Text sharing should succeed" }
-        val shareResult = result.getOrThrow()
-        assert(shareResult.success) { "Share operation should succeed" }
+    fun testTextSharingNeedsAndroidContext(): Unit = runBlocking {
+        // Without an Android Context no share sheet can open, so sharing must not report success
+        val result = sharingService.shareText(text = "Test content to share", title = "Test Share", format = ShareFormat.PLAIN_TEXT)
+        assert(result.isFailure) { "Sharing without a Context must fail" }
     }
     
     @Test
-    fun testConversationExport() = runBlocking {
-        val result = sharingService.exportConversation(
-            conversationId = "test_conv",
-            format = ExportFormat.JSON
-        )
+    fun testConversationExportContainsTheModelsReply(): Unit = runBlocking {
+        requireModel()
+        val inference = LaylaInferenceService({ Result.success(OpenAICompatibleModel(config!!)) })
+        val chat = ChatService(inference)
+        val conversationId = chat.createConversation("Export test")
+        chat.sendMessage(conversationId, "Name one planet.").getOrThrow()
+        val reply = chat.getConversation(conversationId)!!.messages.last()
+        assert(reply.role == org.ninelym.layla.chat.MessageRole.ASSISTANT && reply.content.isNotBlank()) { "Model should reply" }
         
-        assert(result.isSuccess) { "Conversation export should succeed" }
-        val file = result.getOrThrow()
-        assert(file.exists()) { "Export file should exist" }
+        val exporter = SharingService(conversations = { chat.getConversation(it) })
+        val file = exporter.exportConversation(conversationId, ExportFormat.JSON).getOrThrow()
+        val json = file.readText()
         assert(file.extension == "json") { "Export should be JSON format" }
-        
+        assert(json.contains("Name one planet.")) { "Export should contain the user's message" }
+        val messages = kotlinx.serialization.json.Json.parseToJsonElement(json)
+            .let { it as kotlinx.serialization.json.JsonObject }["messages"] as kotlinx.serialization.json.JsonArray
+        val assistant = messages.map { it as kotlinx.serialization.json.JsonObject }
+            .single { (it["role"] as kotlinx.serialization.json.JsonPrimitive).content == "assistant" }
+        assert((assistant["content"] as kotlinx.serialization.json.JsonPrimitive).content == reply.content) {
+            "Export should contain the model's actual reply"
+        }
         file.delete()
     }
     
@@ -269,7 +245,7 @@ class Phase3IntegrationTest {
     }
     
     @Test
-    fun testMultipleFormatExport() = runBlocking {
+    fun testMultipleFormatExport(): Unit = runBlocking {
         val data = mapOf(
             "name" to "Test",
             "value" to "123",
@@ -315,7 +291,7 @@ class Phase3IntegrationTest {
     }
     
     @Test
-    fun testWorkflowExecution() = runBlocking {
+    fun testWorkflowExecution(): Unit = runBlocking {
         val workflow = workflowService.createWorkflow(
             name = "Simple Workflow",
             description = "Test execution",
@@ -333,6 +309,8 @@ class Phase3IntegrationTest {
         assert(result.isSuccess) { "Workflow execution should succeed" }
         val execution = result.getOrThrow()
         assert(execution.workflowId == workflow.id) { "Execution should be for correct workflow" }
+        assert(execution.status == org.ninelym.layla.tasker.WorkflowStatus.COMPLETED) { "Workflow should complete: ${execution.error}" }
+        assert(notifications.notifications.value.any { it.body == "Test notification" }) { "Notification should be delivered" }
     }
     
     @Test
@@ -361,16 +339,17 @@ class Phase3IntegrationTest {
     }
     
     @Test
-    fun testEnableCloudSync() = runBlocking {
+    fun testEnableCloudSync(): Unit = runBlocking {
         cloudSyncService.setSyncEnabled(true)
+        assert(cloudSyncService.initialize("test_user").isSuccess) { "Should connect to the sync server" }
         
-        val result = cloudSyncService.initialize("test_user")
-        
-        assert(result.isSuccess) { "Cloud sync initialization should succeed when enabled" }
+        val noServer = CloudSyncService()
+        noServer.setSyncEnabled(true)
+        assert(noServer.initialize("test_user").isFailure) { "Without a server, sync must not report success" }
     }
     
     @Test
-    fun testDeviceRegistration() = runBlocking {
+    fun testDeviceRegistration(): Unit = runBlocking {
         cloudSyncService.setSyncEnabled(true)
         cloudSyncService.initialize("test_user")
         
@@ -385,48 +364,39 @@ class Phase3IntegrationTest {
     }
     
     @Test
-    fun testCloudSyncOperations() = runBlocking {
+    fun testCloudSyncOperations(): Unit = runBlocking {
         cloudSyncService.setSyncEnabled(true)
-        cloudSyncService.initialize("test_user")
+        cloudSyncService.initialize("test_user").getOrThrow()
         
-        val testData = mapOf("key" to "value")
+        val upload = cloudSyncService.syncToCloud(SyncDataType.PREFERENCES, mapOf("theme" to "midnight-blue")).getOrThrow()
+        assert(upload.bytesTransferred > 0) { "Data should reach the server" }
+        val onServer = String(syncServer.stored.getValue("/test_user/preferences"))
+        assert(!onServer.contains("midnight-blue")) { "Server must only see ciphertext" }
         
-        // Test sync to cloud
-        val uploadResult = cloudSyncService.syncToCloud(SyncDataType.PREFERENCES, testData)
-        assert(uploadResult.isSuccess) { "Upload to cloud should succeed" }
-        
-        // Test sync from cloud
-        val downloadResult = cloudSyncService.syncFromCloud(SyncDataType.PREFERENCES)
-        assert(downloadResult.isSuccess) { "Download from cloud should succeed" }
+        val downloaded = cloudSyncService.syncFromCloud(SyncDataType.PREFERENCES).getOrThrow()
+        assert(downloaded["theme"] == "midnight-blue") { "Round trip should restore the data" }
     }
     
     // ===== Integration Tests =====
     
     @Test
-    fun testDocumentToSharingIntegration() = runBlocking {
-        // Load and process a document
+    fun testDocumentToExportIntegration(): Unit = runBlocking {
+        requireModel()
         val testFile = File.createTempFile("integration_test", ".txt")
-        testFile.writeText("Integration test document content.")
+        testFile.writeText("The Eiffel Tower in Paris was completed in 1889 for the World's Fair.")
         
         val document = documentService.loadDocument(testFile.absolutePath).getOrThrow()
         val summary = documentService.summarizeDocument(document.id).getOrThrow()
+        assert(summary.summary.isNotBlank()) { "The model should summarize the document" }
         
-        // Share the summary
-        val shareResult = sharingService.shareText(
-            text = summary.summary,
-            title = "Document Summary",
-            format = ShareFormat.MARKDOWN
-        )
-        
-        assert(shareResult.isSuccess) { "Sharing document summary should succeed" }
-        
+        val exported = sharingService.exportData(mapOf("summary" to summary.summary), "summary", ExportFormat.MARKDOWN)
+        assert(exported.isSuccess) { "Exporting the summary should succeed" }
+        exported.getOrNull()?.delete()
         testFile.delete()
     }
     
     @Test
-    fun testWorkflowWithBilling() = runBlocking {
-        billingService.initialize()
-        
+    fun testWorkflowWithBilling(): Unit = runBlocking {
         // Create workflow that checks premium status
         val workflow = workflowService.createWorkflow(
             name = "Premium Feature Workflow",
@@ -447,24 +417,17 @@ class Phase3IntegrationTest {
     }
     
     @Test
-    fun testFullPhase3Integration() = runBlocking {
-        // Initialize all services
-        billingService.initialize()
+    fun testFullPhase3Integration(): Unit = runBlocking {
+        requireModel()
         cloudSyncService.setSyncEnabled(true)
-        cloudSyncService.initialize("test_user")
+        cloudSyncService.initialize("test_user").getOrThrow()
         
-        // Test document processing
         val testFile = File.createTempFile("full_test", ".txt")
-        testFile.writeText("Complete Phase 3 integration test content.")
-        
+        testFile.writeText("Complete Phase 3 integration test content about photosynthesis in plants.")
         val document = documentService.loadDocument(testFile.absolutePath).getOrThrow()
         val summary = documentService.summarizeDocument(document.id).getOrThrow()
         
-        // Test sharing
-        val shareResult = sharingService.shareText(summary.summary, "Summary")
-        assert(shareResult.isSuccess) { "Sharing should succeed" }
-        
-        // Test workflow
+        // The workflow's AI step is answered by the model, using the summary as input
         val workflow = workflowService.createWorkflow(
             name = "Integration Workflow",
             description = "Full integration test",
@@ -472,22 +435,16 @@ class Phase3IntegrationTest {
                 WorkflowStep(
                     id = "process",
                     name = "Process Document",
-                    action = WorkflowAction.AIInference("Analyze document")
+                    action = WorkflowAction.AIInference("Give this summary a short title: {{summary}}")
                 )
             )
         )
+        val execution = workflowService.executeWorkflow(workflow.id, mapOf("summary" to summary.summary)).getOrThrow()
+        assert(execution.status == org.ninelym.layla.tasker.WorkflowStatus.COMPLETED) { "Workflow should complete" }
         
-        val workflowResult = workflowService.executeWorkflow(workflow.id)
-        assert(workflowResult.isSuccess) { "Workflow execution should succeed" }
-        
-        // Test cloud sync
-        val syncResult = cloudSyncService.syncToCloud(SyncDataType.DOCUMENTS, mapOf("test" to "data"))
-        assert(syncResult.isSuccess) { "Cloud sync should succeed" }
-        
-        // Verify billing state
-        assert(billingService.products.value.isNotEmpty()) { "Products should be available" }
+        val sync = cloudSyncService.syncToCloud(SyncDataType.DOCUMENTS, mapOf("summary" to summary.summary)).getOrThrow()
+        assert(sync.bytesTransferred > 0) { "Cloud sync should upload the summary" }
         
         testFile.delete()
-        println("✅ Full Phase 3 integration test completed successfully!")
     }
 }

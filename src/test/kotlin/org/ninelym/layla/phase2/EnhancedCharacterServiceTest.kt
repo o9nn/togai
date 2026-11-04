@@ -2,11 +2,13 @@ package org.ninelym.layla.phase2
 
 import org.ninelym.layla.character.EnhancedCharacterService
 import org.ninelym.layla.character.Expression
-import org.ninelym.layla.character.Sentiment
 import kotlinx.coroutines.runBlocking
 import org.junit.Test
 import org.junit.Before
 import org.junit.Assert.*
+import org.junit.Assume.assumeTrue
+import org.ninelym.llm.ModelEndpointConfig
+import org.ninelym.llm.OpenAICompatibleModel
 
 /**
  * Test suite for Enhanced Character Service
@@ -15,11 +17,18 @@ import org.junit.Assert.*
 class EnhancedCharacterServiceTest {
     
     private lateinit var service: EnhancedCharacterService
+    private val config = ModelEndpointConfig.fromEnvironment()
     
     @Before
     fun setup() {
-        service = EnhancedCharacterService()
+        // Expressions are chosen by the served model (TOGAI_LLM_*); model-dependent tests skip without one
+        service = EnhancedCharacterService(modelProvider = {
+            config?.let { Result.success(OpenAICompatibleModel(it)) }
+                ?: Result.failure(org.ninelym.llm.ModelNotConfiguredException())
+        })
     }
+    
+    private fun requireModel() = assumeTrue("no live model configured", config != null)
     
     @Test
     fun `test service initialization`() = runBlocking {
@@ -48,25 +57,21 @@ class EnhancedCharacterServiceTest {
     }
     
     @Test
-    fun `test generate expression from sentiment`() = runBlocking {
+    fun `test model chooses expression for a line`() = runBlocking {
+        requireModel()
         service.initialize()
         
         val expression = service.generateExpression(
             characterId = "assistant",
-            messageContext = "Great job on completing the task!",
-            sentiment = Sentiment.POSITIVE
+            spokenText = "Great job on completing the task!"
         )
         
-        assertNotNull("Expression should be generated", expression)
-        // Expression should be positive (HAPPY or NEUTRAL)
-        assertTrue(
-            "Expression should be positive",
-            expression == Expression.HAPPY || expression == Expression.NEUTRAL
-        )
+        assertTrue("The model should name one of the expressions", expression.isSuccess)
     }
     
     @Test
     fun `test sync expression with speech`() = runBlocking {
+        requireModel()
         service.initialize()
         service.setActiveCharacter("creative")
         
@@ -118,30 +123,10 @@ class EnhancedCharacterServiceTest {
     }
     
     @Test
-    fun `test expression generation for different sentiments`() = runBlocking {
-        service.initialize()
-        
-        val positiveExpr = service.generateExpression(
-            "creative",
-            "This is wonderful!",
-            Sentiment.POSITIVE
-        )
-        
-        val negativeExpr = service.generateExpression(
-            "creative",
-            "This is unfortunate",
-            Sentiment.NEGATIVE
-        )
-        
-        val neutralExpr = service.generateExpression(
-            "analyst",
-            "Let me analyze this",
-            Sentiment.NEUTRAL
-        )
-        
-        assertNotNull("Positive expression should be generated", positiveExpr)
-        assertNotNull("Negative expression should be generated", negativeExpr)
-        assertNotNull("Neutral expression should be generated", neutralExpr)
+    fun `test expression fails without a model instead of guessing`() = runBlocking {
+        val offline = EnhancedCharacterService(modelProvider = { Result.failure(org.ninelym.llm.ModelNotConfiguredException()) })
+        offline.initialize()
+        assertTrue(offline.generateExpression("creative", "This is wonderful!").isFailure)
     }
     
     @Test

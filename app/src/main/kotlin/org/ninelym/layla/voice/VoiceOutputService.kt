@@ -198,7 +198,7 @@ class VoiceOutputService(
         val voice = characterId?.let { characterVoices[it] } ?: getDefaultVoice()
         val endpoint = endpointProvider().getOrElse { return Result.failure(it) }
         return endpoint.speech(text, voice.voiceId, ttsModel).map { bytes ->
-            File.createTempFile("voice-output", ".mp3").apply { writeBytes(bytes) }
+            File.createTempFile("voice-output", ".wav").apply { writeBytes(bytes) }
         }
     }
     
@@ -238,7 +238,7 @@ class VoiceOutputService(
     private suspend fun performSpeech(request: SpeechRequest) {
         val endpoint = endpointProvider().getOrThrow()
         val audio = endpoint.speech(request.text, request.voiceProfile.voiceId, ttsModel).getOrThrow()
-        val file = File.createTempFile("voice-output", ".mp3").apply { writeBytes(audio) }
+        val file = File.createTempFile("voice-output", ".wav").apply { writeBytes(audio) }
         isSpeaking = true
         try {
             play(file, request)

@@ -38,6 +38,9 @@ class OnDeviceAIProcessor(
                 isLoaded = configured != null
             )
             
+            // Image generation goes to the served diffusion model
+            imageGenerator.initialize()
+            
             // Initialize character system with default personalities
             characterSystem.initializeDefaultCharacters()
             

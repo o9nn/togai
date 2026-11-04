@@ -132,7 +132,7 @@ class SwarmIntelligenceEngine(
         var bestLength = Float.MAX_VALUE
         val convergenceHistory = mutableListOf<Float>()
 
-        repeat(config.maxIterations) { iteration ->
+        for (iteration in 0 until config.maxIterations) {
             val antPaths = mutableListOf<Pair<List<Int>, Float>>()
 
             // Each ant constructs a solution

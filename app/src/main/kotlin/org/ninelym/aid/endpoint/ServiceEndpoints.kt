@@ -298,7 +298,7 @@ class VoiceEndpoint(
         val model = request.parameters["model"] as? String ?: "tts-1"
         val endpoint = endpointProvider().getOrElse { return modelUnavailable(it) }
         return endpoint.speech(text, voice, model).toEndpointResult { audio ->
-            mapOf("audioPath" to tempOutput("aid-speech", ".mp3", audio).absolutePath, "bytes" to audio.size, "voice" to voice)
+            mapOf("audioPath" to tempOutput("aid-speech", ".wav", audio).absolutePath, "bytes" to audio.size, "voice" to voice)
         }
     }
 }

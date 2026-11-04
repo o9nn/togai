@@ -165,10 +165,17 @@ class OpenAICompatibleModel(
         }
     }
 
-    /** Text-to-speech via `POST /audio/speech`; returns the encoded audio bytes. */
-    suspend fun speech(text: String, voice: String = "alloy", model: String = "tts-1"): Result<ByteArray> = withContext(Dispatchers.IO) {
+    /** Text-to-speech via `POST /audio/speech`; returns the encoded audio bytes (WAV by default). */
+    suspend fun speech(
+        text: String,
+        voice: String = "alloy",
+        model: String = "tts-1",
+        responseFormat: String = "wav"
+    ): Result<ByteArray> = withContext(Dispatchers.IO) {
         runCatching {
-            val body = buildJsonObject { put("model", model); put("input", text); put("voice", voice) }
+            val body = buildJsonObject {
+                put("model", model); put("input", text); put("voice", voice); put("response_format", responseFormat)
+            }
             execute(authorized(Request.Builder().url("$base/audio/speech")).post(body.toString().toRequestBody(jsonType)).build()).use { response ->
                 if (!response.isSuccessful) throw ModelResponseException("Speech synthesis failed: HTTP ${response.code}")
                 response.body!!.bytes()

@@ -39,7 +39,7 @@ class FileAccessService(
      * In actual Android implementation, this would trigger the permission request dialog
      */
     suspend fun requestPermission(permission: Permission): PermissionResult {
-        return withContext(Dispatchers.Main) {
+        return withContext(Dispatchers.Default) {
             // Reports the real grant state; prompting the user requires an Activity's permission launcher
             val ctx = context ?: throw IllegalStateException("Checking permissions needs an Android Context")
             val granted = androidx.core.content.ContextCompat.checkSelfPermission(ctx, permission.androidPermission) ==
@@ -272,7 +272,7 @@ class FileAccessService(
      * Share file with other apps
      */
     suspend fun shareFile(path: String): Result<Unit> {
-        return withContext(Dispatchers.Main) {
+        return withContext(Dispatchers.Default) {
             try {
                 val ctx = context ?: throw IllegalStateException("Sharing needs an Android Context")
                 val file = File(path)
