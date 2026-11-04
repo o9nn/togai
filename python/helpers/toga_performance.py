@@ -8,7 +8,7 @@ memoization, and performance monitoring for the Toga personality system.
 import sys
 from functools import lru_cache, wraps
 from time import time
-from typing import Any, Callable, Dict, Optional, TypeVar, cast
+from typing import Any, Callable, Dict, List, Optional, TypeVar, cast
 
 T = TypeVar("T")
 
@@ -253,7 +253,7 @@ class BatchProcessor:
         self.batch_size = batch_size
 
     @timed("batch_process")
-    def process_batch(self, items: list[Any], processor: Callable[[Any], Any]) -> list[Any]:
+    def process_batch(self, items: List[Any], processor: Callable[[Any], Any]) -> List[Any]:
         """
         Process items in batches.
 

@@ -23,7 +23,9 @@ from helpers.toga_personality import (
 # Toga's words come from a real served model; these tests run against
 # TOGAI_LLM_BASE_URL / TOGAI_LLM_MODEL and are skipped when none is configured.
 LIVE_MODEL = bool(os.environ.get("TOGAI_LLM_BASE_URL") and os.environ.get("TOGAI_LLM_MODEL"))
-requires_model = unittest.skipUnless(LIVE_MODEL, "no live model configured (TOGAI_LLM_BASE_URL / TOGAI_LLM_MODEL)")
+requires_model = unittest.skipUnless(
+    LIVE_MODEL, "no live model configured (TOGAI_LLM_BASE_URL / TOGAI_LLM_MODEL)"
+)
 
 
 class TestTogaPersonalityTensor(unittest.TestCase):

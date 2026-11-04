@@ -68,6 +68,10 @@ extend-exclude = '''
 )/
 '''
 
+[tool.isort]
+profile = "black"
+line_length = 100
+
 [tool.mypy]
 python_version = "3.8"
 warn_return_any = true

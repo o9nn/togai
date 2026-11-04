@@ -4,12 +4,13 @@ Tests for Toga Emotional Intelligence Module
 
 import os
 import unittest
+
 from python.helpers.toga_emotional_intelligence import (
-    EmotionCategory,
-    SentimentPolarity,
     EmotionalContext,
-    EmpatheticResponse,
     EmotionalIntelligenceEngine,
+    EmotionCategory,
+    EmpatheticResponse,
+    SentimentPolarity,
 )
 
 
@@ -18,7 +19,16 @@ class TestEmotionCategory(unittest.TestCase):
 
     def test_all_categories_exist(self):
         """Test that all expected emotion categories exist."""
-        expected = ["JOY", "SADNESS", "ANGER", "FEAR", "SURPRISE", "DISGUST", "TRUST", "ANTICIPATION"]
+        expected = [
+            "JOY",
+            "SADNESS",
+            "ANGER",
+            "FEAR",
+            "SURPRISE",
+            "DISGUST",
+            "TRUST",
+            "ANTICIPATION",
+        ]
         actual = [e.name for e in EmotionCategory]
         self.assertEqual(set(actual), set(expected))
 

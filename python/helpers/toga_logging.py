@@ -65,6 +65,18 @@ class TogaLogger:
             file_handler.setFormatter(formatter)
             self.logger.addHandler(file_handler)
 
+    def close(self):
+        """Close and detach this logger's handlers (releases log files)."""
+        for handler in self.logger.handlers[:]:
+            handler.close()
+            self.logger.removeHandler(handler)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+
     def _format_context(self, context: Optional[Dict[str, Any]] = None) -> str:
         """Format context dictionary as JSON string."""
         if context:

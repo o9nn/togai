@@ -38,6 +38,7 @@ class TestTogaLogger(unittest.TestCase):
 
             # Verify log file was created
             self.assertTrue(log_file.exists())
+            logger.close()
 
     def test_log_with_context(self):
         """Test logging with context data"""
@@ -74,6 +75,7 @@ class TestInteractionLogger(unittest.TestCase):
             # Verify log file exists and has content
             self.assertTrue(log_file.exists())
             self.assertTrue(log_file.stat().st_size > 0)
+            logger.close()
 
     def test_log_interaction_with_metadata(self):
         """Test logging interaction with additional metadata"""
@@ -117,6 +119,7 @@ class TestPerformanceLogger(unittest.TestCase):
 
             # Verify log file exists
             self.assertTrue(log_file.exists())
+            logger.close()
 
     def test_log_timing(self):
         """Test logging operation timing"""
@@ -158,6 +161,7 @@ class TestEmotionalStateLogger(unittest.TestCase):
 
             # Verify log file exists
             self.assertTrue(log_file.exists())
+            logger.close()
 
     def test_log_emotional_state(self):
         """Test logging current emotional state"""
@@ -209,6 +213,8 @@ class TestLoggerIntegration(unittest.TestCase):
             # Both should write successfully
             self.assertTrue(log_file.exists())
             self.assertTrue(log_file.stat().st_size > 0)
+            interaction_logger.close()
+            performance_logger.close()
 
     def test_logger_hierarchy(self):
         """Test logger hierarchy and inheritance"""

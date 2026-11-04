@@ -8,7 +8,7 @@ parameters, emotional state settings, and system behavior.
 import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 
 @dataclass
@@ -194,7 +194,7 @@ class ConfigManager:
         return TogaConfig.load_or_default(filepath)
 
     @staticmethod
-    def validate_config(config: TogaConfig) -> tuple[bool, list[str]]:
+    def validate_config(config: TogaConfig) -> Tuple[bool, List[str]]:
         """
         Validate configuration values.
 

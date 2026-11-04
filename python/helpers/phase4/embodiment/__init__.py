@@ -1,18 +1,8 @@
 """Embodiment Bindings for Unity3D, ROS, and Web Agents."""
 
-from helpers.phase4.embodiment.unity3d_binding import (
-    Unity3DBinding,
-    UnityTransform,
-    UnityEventType,
-)
-from helpers.phase4.embodiment.ros_binding import (
-    ROSBinding,
-    ROSSensorType,
-)
-from helpers.phase4.embodiment.web_agent_binding import (
-    WebAgentBinding,
-    DOMInteractionType,
-)
+from helpers.phase4.embodiment.ros_binding import ROSBinding, ROSSensorType
+from helpers.phase4.embodiment.unity3d_binding import Unity3DBinding, UnityEventType, UnityTransform
+from helpers.phase4.embodiment.web_agent_binding import DOMInteractionType, WebAgentBinding
 
 __all__ = [
     "Unity3DBinding",

@@ -22,7 +22,6 @@ from helpers.toga_personality import (
     initialize_toga_personality,
 )
 
-
 # Operations that call the language model are slow by nature; keep their sample small
 MODEL_ITERATIONS = int(os.environ.get("TOGA_BENCH_MODEL_ITERATIONS", "5"))
 
@@ -104,13 +103,17 @@ def benchmark_input_framing():
 
     # Normal message
     results = benchmark_function(
-        lambda: toga.frame_input("Normal message without triggers"), iterations=MODEL_ITERATIONS, warmup=1
+        lambda: toga.frame_input("Normal message without triggers"),
+        iterations=MODEL_ITERATIONS,
+        warmup=1,
     )
     print_benchmark_results("Normal Message Framing", results)
 
     # Cute trigger message
     results = benchmark_function(
-        lambda: toga.frame_input("This is so cute and adorable!"), iterations=MODEL_ITERATIONS, warmup=1
+        lambda: toga.frame_input("This is so cute and adorable!"),
+        iterations=MODEL_ITERATIONS,
+        warmup=1,
     )
     print_benchmark_results("Cute Trigger Message Framing", results)
 
@@ -147,7 +150,9 @@ def benchmark_commentary():
 
     for context in contexts:
         results = benchmark_function(
-            lambda: toga.add_commentary("Test content", context=context), iterations=MODEL_ITERATIONS, warmup=1
+            lambda: toga.add_commentary("Test content", context=context),
+            iterations=MODEL_ITERATIONS,
+            warmup=1,
         )
         print_benchmark_results(f"Commentary ({context})", results)
 
@@ -162,7 +167,9 @@ def benchmark_full_interaction():
 
     # Normal interaction
     results = benchmark_function(
-        lambda: toga.process_interaction("Hello, how are you?"), iterations=MODEL_ITERATIONS, warmup=1
+        lambda: toga.process_interaction("Hello, how are you?"),
+        iterations=MODEL_ITERATIONS,
+        warmup=1,
     )
     print_benchmark_results("Full Interaction (Normal)", results)
 
@@ -257,8 +264,7 @@ def benchmark_inheritance():
 
 def run_all_benchmarks():
     """Run all benchmarks."""
-    print(
-        """
+    print("""
 ╔══════════════════════════════════════════════════════════════════════╗
 ║                                                                      ║
 ║     TOGA PERSONALITY SYSTEM - PERFORMANCE BENCHMARKS                ║
@@ -266,8 +272,7 @@ def run_all_benchmarks():
 ║     Measuring performance across all core operations                ║
 ║                                                                      ║
 ╚══════════════════════════════════════════════════════════════════════╝
-    """
-    )
+    """)
 
     start_time = time.time()
 
