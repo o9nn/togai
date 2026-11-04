@@ -182,7 +182,7 @@ class TermuxIntegrationService private constructor(
             // Build the wrapped command that captures output
             val wrappedCommand = buildString {
                 if (workingDir != null) {
-                    append("cd $workingDir && ")
+                    append("cd ${shellPath(workingDir)} && ")
                 }
                 append("($command) > ${stdoutFile.absolutePath} 2> ${stderrFile.absolutePath}; ")
                 append("echo \\$? > ${exitCodeFile.absolutePath}")
@@ -282,12 +282,12 @@ class TermuxIntegrationService private constructor(
     ): CommandResult {
         val command = buildString {
             if (interpreter != null) {
-                append("$interpreter ")
+                append(shellQuote(interpreter)).append(" ")
             }
-            append(scriptPath)
+            append(shellPath(scriptPath))
             if (args.isNotEmpty()) {
                 append(" ")
-                append(args.joinToString(" ") { "\"$it\"" })
+                append(args.joinToString(" ") { shellQuote(it) })
             }
         }
 
@@ -298,7 +298,7 @@ class TermuxIntegrationService private constructor(
      * Install a package using pkg
      */
     suspend fun installPackage(packageName: String): CommandResult {
-        return executeCommand("pkg install -y $packageName", timeout = 120.seconds)
+        return executeCommand("pkg install -y ${shellQuote(packageName)}", timeout = 120.seconds)
     }
 
     /**
@@ -312,12 +312,13 @@ class TermuxIntegrationService private constructor(
      * Check if a package is installed
      */
     suspend fun isPackageInstalled(packageName: String): Boolean {
-        val result = executeCommand("pkg list-installed | grep -q $packageName")
+        val result = executeCommand("pkg list-installed | grep -q -- ${shellQuote(packageName)}")
         return result.isSuccess
     }
 
     /**
-     * Execute Git command
+     * Execute Git command. [command] is passed to git as written (e.g. "status --porcelain"), so it
+     * must not contain untrusted text; [repoPath] is quoted.
      */
     suspend fun git(
         command: String,
@@ -325,7 +326,7 @@ class TermuxIntegrationService private constructor(
         timeout: Duration = 60.seconds
     ): CommandResult {
         val fullCommand = if (repoPath != null) {
-            "cd $repoPath && git $command"
+            "cd ${shellPath(repoPath)} && git $command"
         } else {
             "git $command"
         }
@@ -343,11 +344,11 @@ class TermuxIntegrationService private constructor(
         val command = buildString {
             append("git clone")
             if (branch != null) {
-                append(" -b $branch")
+                append(" -b ").append(shellQuote(branch))
             }
-            append(" $repoUrl")
+            append(" ").append(shellQuote(repoUrl))
             if (targetDir != null) {
-                append(" $targetDir")
+                append(" ").append(shellPath(targetDir))
             }
         }
         return executeCommand(command, timeout = 300.seconds)
@@ -367,9 +368,9 @@ class TermuxIntegrationService private constructor(
         val sshCommand = buildString {
             append("ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10")
             if (identityFile != null) {
-                append(" -i $identityFile")
+                append(" -i ").append(shellPath(identityFile))
             }
-            append(" -p $port $user@$host '$command'")
+            append(" -p $port ").append(shellQuote("$user@$host")).append(" ").append(shellQuote(command))
         }
         return executeCommand(sshCommand, timeout = timeout)
     }
@@ -435,10 +436,12 @@ class TermuxIntegrationService private constructor(
      */
     suspend fun python(
         code: String,
+        args: List<String> = emptyList(),
         timeout: Duration = 30.seconds
     ): CommandResult {
-        val escapedCode = code.replace("\"", "\\\"").replace("\n", "\\n")
-        return executeCommand("python -c \"$escapedCode\"", timeout = timeout)
+        // Program and arguments each reach Python verbatim as single words (newlines included)
+        val argv = args.joinToString("") { " " + shellQuote(it) }
+        return executeCommand("python -c ${shellQuote(code)}$argv", timeout = timeout)
     }
 
     /**
@@ -448,8 +451,7 @@ class TermuxIntegrationService private constructor(
         code: String,
         timeout: Duration = 30.seconds
     ): CommandResult {
-        val escapedCode = code.replace("\"", "\\\"").replace("\n", "\\n")
-        return executeCommand("node -e \"$escapedCode\"", timeout = timeout)
+        return executeCommand("node -e ${shellQuote(code)}", timeout = timeout)
     }
 
     /**

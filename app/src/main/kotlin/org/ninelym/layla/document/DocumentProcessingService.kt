@@ -5,9 +5,11 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import org.ninelym.llm.GenerationOptions
 import org.ninelym.llm.LanguageModel
 import org.ninelym.llm.LanguageModels
@@ -436,12 +438,17 @@ class DocumentProcessingService(
             "$instruction Respond as JSON: {\"findings\": string, \"insights\": [string]}.",
             corpus
         ).getOrThrow().jsonObject
+        // Small models put the requested fields in varying shapes (a string, a list, a nested object);
+        // read the model's own text out of whichever shape it used.
+        val findings = json["findings"]?.textLines().orEmpty().joinToString("\n")
+        val insights = json["insights"]?.textLines()
+            ?: (json["findings"] as? JsonObject)?.get("insights")?.textLines()
+            ?: emptyList()
         return MultiDocumentAnalysis(
             documentIds = documents.map { it.id },
             analysisType = type,
-            findings = json["findings"]?.jsonPrimitive?.contentOrNull
-                ?: throw IllegalStateException("Model analysis had no findings"),
-            insights = json.stringList("insights"),
+            findings = findings.ifBlank { throw IllegalStateException("Model analysis had no findings") },
+            insights = insights,
             timestamp = System.currentTimeMillis()
         )
     }
@@ -463,7 +470,7 @@ class DocumentProcessingService(
         ).getOrThrow().jsonObject
         return DocumentCategory(
             documentId = documentId,
-            primaryCategory = json["category"]?.jsonPrimitive?.contentOrNull
+            primaryCategory = json["category"]?.textLines()?.firstOrNull()
                 ?: throw IllegalStateException("Model did not return a category"),
             subcategories = json.stringList("subcategories"),
             tags = json.stringList("tags"),
@@ -472,7 +479,20 @@ class DocumentProcessingService(
     }
     
     private fun Map<String, JsonElement>.stringList(key: String): List<String> =
-        (this[key] as? JsonArray)?.mapNotNull { it.jsonPrimitive.contentOrNull } ?: emptyList()
+        this[key]?.textLines() ?: emptyList()
+
+    /** The text the model wrote inside [this], flattened to lines whatever JSON shape it chose. */
+    private fun JsonElement.textLines(): List<String> = when (this) {
+        is JsonNull -> emptyList()
+        is JsonPrimitive -> listOfNotNull(contentOrNull?.trim()?.takeIf { it.isNotEmpty() })
+        is JsonArray -> flatMap { it.textLines() }
+        is JsonObject ->
+            if (values.all { it is JsonPrimitive }) {
+                listOfNotNull(values.flatMap { it.textLines() }.joinToString(": ").takeIf { it.isNotEmpty() })
+            } else {
+                values.flatMap { it.textLines() }
+            }
+    }
     
     private fun updateDocument(documentId: String, transform: (Document) -> Document) {
         _documents.value = _documents.value.map { doc ->

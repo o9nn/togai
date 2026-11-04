@@ -6,6 +6,8 @@ import kotlinx.coroutines.flow.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.buildJsonObject
 import org.ninelym.togai.util.ErrorHandler
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
@@ -22,9 +24,11 @@ import kotlin.time.Duration.Companion.seconds
  *
  * @see https://github.com/9cog/cogai
  */
-class CogAIBridge private constructor(
+class CogAIBridge internal constructor(
     private val context: Context,
-    private val termux: TermuxIntegrationService
+    private val termux: TermuxIntegrationService,
+    /** Base URL of the CogAI gateway; the default is the gateway CogAI runs inside Termux. */
+    private val apiBase: String = DEFAULT_API_BASE
 ) {
 
     companion object {
@@ -36,14 +40,8 @@ class CogAIBridge private constructor(
         private const val COGAI_PORT = 8080
         private const val COGAI_HOST = "127.0.0.1"
 
-        // API Endpoints
-        private const val API_BASE = "http://$COGAI_HOST:$COGAI_PORT"
-        private const val API_CHAT = "$API_BASE/v1/chat/completions"
-        private const val API_SPEECH_RECOGNIZE = "$API_BASE/v1/audio/transcriptions"
-        private const val API_SPEECH_SYNTHESIZE = "$API_BASE/v1/audio/speech"
-        private const val API_ATTENTION = "$API_BASE/v1/attention/state"
-        private const val API_PREDICT = "$API_BASE/v1/predict/apps"
-        private const val API_HEALTH = "$API_BASE/health"
+        // Gateway address inside Termux
+        const val DEFAULT_API_BASE = "http://$COGAI_HOST:$COGAI_PORT"
 
         @Volatile
         private var instance: CogAIBridge? = null
@@ -57,6 +55,14 @@ class CogAIBridge private constructor(
             }
         }
     }
+
+    // API Endpoints
+    private val API_CHAT = "$apiBase/v1/chat/completions"
+    private val API_SPEECH_RECOGNIZE = "$apiBase/v1/audio/transcriptions"
+    private val API_SPEECH_SYNTHESIZE = "$apiBase/v1/audio/speech"
+    private val API_ATTENTION = "$apiBase/v1/attention/state"
+    private val API_PREDICT = "$apiBase/v1/predict/apps"
+    private val API_HEALTH = "$apiBase/health"
 
     // JSON serializer
     private val json = Json {
@@ -298,8 +304,17 @@ class CogAIBridge private constructor(
     @Serializable
     data class ChatChoice(
         val index: Int = 0,
-        val message: ChatMessage,
+        /** The full message (non-streamed responses). */
+        val message: ChatMessage? = null,
+        /** The next piece of the message (OpenAI-style streamed chunks). */
+        val delta: ChatDelta? = null,
         val finish_reason: String? = null
+    )
+
+    @Serializable
+    data class ChatDelta(
+        val role: String? = null,
+        val content: String? = null
     )
 
     @Serializable
@@ -391,24 +406,32 @@ class CogAIBridge private constructor(
         )
 
         // Use curl with streaming
-        val command = """
-            curl -s -N -X POST '$API_CHAT' \
-            -H 'Content-Type: application/json' \
-            -d '${json.encodeToString(request).replace("'", "\\'")}'
-        """.trimIndent()
+        val command = "curl -s -N -X POST ${shellQuote(API_CHAT)} -H 'Content-Type: application/json' " +
+            "-d ${shellQuote(json.encodeToString(request))}"
 
+        // Output arrives in arbitrary pieces; reassemble whole SSE lines before parsing them
+        val pending = StringBuilder()
+        suspend fun FlowCollector<String>.handle(line: String) {
+            val trimmed = line.trim()
+            if (!trimmed.startsWith("data:")) return
+            val data = trimmed.removePrefix("data:").trim()
+            if (data == "[DONE]" || data.isEmpty()) return
+            val parsed = runCatching { json.decodeFromString<ChatResponse>(data) }.getOrNull() ?: return
+            parsed.error?.let { throw CogAIException("CogAI stream failed: $it") }
+            val choice = parsed.choices.firstOrNull()
+            (choice?.delta?.content ?: choice?.message?.content)?.takeIf { it.isNotEmpty() }?.let { emit(it) }
+        }
         termux.observeCommandOutput(command).collect { chunk ->
-            // Parse SSE data
-            if (chunk.startsWith("data: ") && !chunk.contains("[DONE]")) {
-                try {
-                    val data = chunk.removePrefix("data: ").trim()
-                    val parsed = json.decodeFromString<ChatResponse>(data)
-                    parsed.choices.firstOrNull()?.message?.content?.let { emit(it) }
-                } catch (_: Exception) {
-                    // Skip malformed chunks
-                }
+            pending.append(chunk)
+            while (true) {
+                val end = pending.indexOf("\n")
+                if (end < 0) break
+                val line = pending.substring(0, end)
+                pending.delete(0, end + 1)
+                handle(line)
             }
         }
+        if (pending.isNotEmpty()) handle(pending.toString())
     }.flowOn(Dispatchers.IO)
 
     // ========== Speech Services ==========
@@ -638,19 +661,22 @@ class CogAIBridge private constructor(
         apiKey: String? = null,
         baseUrl: String? = null
     ): Boolean {
-        val configUpdate = buildString {
-            append("cd $COGAI_DIR && python -c \"")
-            append("import json; ")
-            append("c = json.load(open('config/config.json')); ")
-            append("c['llm']['providers']['$provider'] = {")
-            if (apiKey != null) append("'api_key': '$apiKey', ")
-            if (baseUrl != null) append("'base_url': '$baseUrl', ")
-            append("}; ")
-            append("json.dump(c, open('config/config.json', 'w'), indent=2)")
-            append("\"")
+        // Values travel as one JSON argument; the program text is fixed, so nothing in them can run
+        val settings = buildJsonObject {
+            put("provider", provider)
+            if (apiKey != null) put("api_key", apiKey)
+            if (baseUrl != null) put("base_url", baseUrl)
         }
-
-        val result = termux.executeCommand(configUpdate)
+        val program = """
+import json, sys
+s = json.loads(sys.argv[1])
+c = json.load(open('config/config.json'))
+c['llm']['providers'][s['provider']] = {k: v for k, v in s.items() if k != 'provider'}
+json.dump(c, open('config/config.json', 'w'), indent=2)
+        """.trimIndent()
+        val result = termux.executeCommand(
+            "cd ${shellPath(COGAI_DIR)} && python -c ${shellQuote(program)} ${shellQuote(settings.toString())}"
+        )
         return result.isSuccess
     }
 
@@ -658,16 +684,14 @@ class CogAIBridge private constructor(
      * Set default LLM provider
      */
     suspend fun setDefaultProvider(provider: String): Boolean {
-        val configUpdate = """
-            cd $COGAI_DIR && python -c "
-            import json
-            c = json.load(open('config/config.json'))
-            c['llm']['default_provider'] = '$provider'
-            json.dump(c, open('config/config.json', 'w'), indent=2)
-            "
+        val program = """
+import json, sys
+c = json.load(open('config/config.json'))
+c['llm']['default_provider'] = sys.argv[1]
+json.dump(c, open('config/config.json', 'w'), indent=2)
         """.trimIndent()
 
-        val result = termux.executeCommand(configUpdate)
+        val result = termux.executeCommand("cd ${shellPath(COGAI_DIR)} && python -c ${shellQuote(program)} ${shellQuote(provider)}")
         return result.isSuccess
     }
 

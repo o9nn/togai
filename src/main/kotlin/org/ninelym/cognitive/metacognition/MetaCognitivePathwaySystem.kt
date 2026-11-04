@@ -5,6 +5,8 @@ import org.ninelym.cognitive.hypergraph.Atom
 import org.ninelym.cognitive.hypergraph.AtomType
 import org.ninelym.cognitive.CognitiveTensor
 import org.ninelym.cognitive.ecan.ECANKernel
+import org.ninelym.cognitive.ecan.ECANStats
+import org.ninelym.cognitive.hypergraph.HypergraphStats
 
 /**
  * Meta-Cognitive Pathway System for Phase 5
@@ -609,48 +611,27 @@ class MetaCognitivePathwaySystem(
     }
     
     private fun getRecentProcessingOperations(): List<ProcessingOperation> {
+        // Time the system's own read operations now; every figure below is measured, not assumed
         val operations = mutableListOf<ProcessingOperation>()
-        val currentTime = System.currentTimeMillis()
-        
-        // Snapshot of the operations implied by the current system state
-        val stats = hypergraph.getStats()
-        val ecanStats = ecanKernel.getECANStats()
-        
-        // Add attention allocation operations
-        operations.add(ProcessingOperation(
-            operation = "attention_allocation",
-            processingTime = (ecanStats.averageAttention * 1000).toLong(),
-            successful = ecanStats.averageAttention > 0.3f,
-            timestamp = currentTime
-        ))
-        
-        // Add atom processing operations
-        val activeAtoms = hypergraph.getAllAtoms().filter { it.attention > 0.4f }
-        activeAtoms.take(5).forEach { atom ->
+        fun <T> measure(name: String, succeeded: (T) -> Boolean, block: () -> T) {
+            val started = System.nanoTime()
+            val outcome = runCatching(block)
+            val elapsedMs = (System.nanoTime() - started) / 1_000_000
             operations.add(ProcessingOperation(
-                operation = "process_${atom.type.name.lowercase()}_atom",
-                processingTime = (atom.attention * 1000).toLong(),
-                successful = atom.tensor.isValid(),
-                timestamp = currentTime
+                operation = name,
+                processingTime = elapsedMs,
+                successful = outcome.map(succeeded).getOrDefault(false),
+                timestamp = System.currentTimeMillis()
             ))
         }
-        
-        // Add hypergraph operations
-        operations.add(ProcessingOperation(
-            operation = "hypergraph_update",
-            processingTime = (stats.atomCount * 2).toLong(),
-            successful = stats.atomCount > 0,
-            timestamp = currentTime - 2000
-        ))
-        
-        // Add tensor fragment processing
-        operations.add(ProcessingOperation(
-            operation = "tensor_fragment_processing",
-            processingTime = 150L,
-            successful = true,
-            timestamp = currentTime - 3000
-        ))
-        
+
+        measure("hypergraph_stats", { stats: HypergraphStats -> stats.atomCount >= 0 }) { hypergraph.getStats() }
+        measure("attention_stats", { stats: ECANStats -> !stats.averageAttention.isNaN() }) { ecanKernel.getECANStats() }
+        measure("atom_scan", { atoms: List<Atom> -> true }) { hypergraph.getAllAtoms() }
+        measure("tensor_validation", { invalid: Int -> invalid == 0 }) {
+            hypergraph.getAllAtoms().count { !it.tensor.isValid() }
+        }
+
         return operations.sortedByDescending { it.timestamp }
     }
     
@@ -659,7 +640,12 @@ class MetaCognitivePathwaySystem(
     }
     
     private fun identifyOptimizationOpportunities(operations: List<ProcessingOperation>): List<String> {
-        return listOf("Batch similar operations", "Cache frequent patterns", "Optimize attention allocation")
+        // Derived from the measured operations: failures to repair, and outliers worth caching
+        val failed = operations.filterNot { it.successful }.map { "Repair failing operation: ${it.operation}" }
+        val median = operations.map { it.processingTime }.sorted().let { if (it.isEmpty()) 0L else it[it.size / 2] }
+        val slow = operations.filter { median > 0 && it.processingTime > median * 2 }
+            .map { "Cache results of ${it.operation} (${it.processingTime} ms vs median $median ms)" }
+        return failed + slow
     }
     
     private fun calculateOverallEfficiency(averageTime: Float, successRate: Float, bottleneckCount: Int): Float {

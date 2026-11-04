@@ -81,7 +81,8 @@ class ServedMediaModelsTest {
         assumeTrue("TOGAI_VISION_BASE_URL not set; no served vision model", visionUrl != null)
         val vision = OpenAICompatibleModel(ModelEndpointConfig(visionUrl!!, System.getenv("TOGAI_VISION_MODEL") ?: "nanollava", timeoutSeconds = 600))
 
-        val png = media.generateImage("a red apple on a wooden table", "512x512", "stable-diffusion").getOrThrow()
+        // A fixed seed makes the diffusion model render the same real image on every run
+        val png = media.generateImage("a red apple on a wooden table", "512x512", "stable-diffusion", seed = 7).getOrThrow()
         val file = File.createTempFile("apple", ".png").apply { writeBytes(png); deleteOnExit() }
 
         val endpoint = org.ninelym.aid.endpoint.ImageEndpoint({ Result.success(vision) })

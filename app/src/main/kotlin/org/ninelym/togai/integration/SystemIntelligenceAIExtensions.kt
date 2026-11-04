@@ -279,10 +279,11 @@ suspend fun SystemIntelligenceService.executeVoiceCommand(
         appendLine("NONE: <explanation if command cannot be executed>")
     }
 
+    // Keep the model's wording: button labels and explanations are matched/shown as written
     val response = cogai.ask(
         prompt = prompt,
         systemPrompt = "You are a voice command interpreter. Output only the action in the exact format specified."
-    ).trim().uppercase()
+    ).trim()
 
     return executeInterpretedCommand(response, content)
 }
@@ -297,41 +298,38 @@ private fun SystemIntelligenceService.executeInterpretedCommand(
     interpreted: String,
     content: SystemIntelligenceService.ScreenContent
 ): VoiceCommandResult {
-    return when {
-        interpreted.startsWith("CLICK:") -> {
-            val buttonText = interpreted.removePrefix("CLICK:").trim()
-            val clicked = clickByText(buttonText)
+    val keyword = interpreted.substringBefore(":").trim().uppercase()
+    val argument = interpreted.substringAfter(":", "").trim()
+    return when (keyword) {
+        "CLICK" -> {
+            val clicked = clickByText(argument)
             VoiceCommandResult(
                 success = clicked,
-                message = if (clicked) "Clicked '$buttonText'" else "Could not find '$buttonText'",
+                message = if (clicked) "Clicked '$argument'" else "Could not find '$argument'",
                 action = "CLICK"
             )
         }
-        interpreted.startsWith("SCROLL:") -> {
-            val direction = interpreted.removePrefix("SCROLL:").trim()
+        "SCROLL" -> {
+            val direction = argument.uppercase()
             val forward = direction != "UP"
             val scrolled = scroll(forward)
             VoiceCommandResult(
                 success = scrolled,
-                message = if (scrolled) "Scrolled $direction" else "Could not scroll",
+                message = if (scrolled) "Scrolled ${direction.lowercase()}" else "Could not scroll",
                 action = "SCROLL"
             )
         }
-        interpreted == "BACK" -> {
+        "BACK" -> {
             val success = goBack()
             VoiceCommandResult(success, if (success) "Went back" else "Could not go back", "BACK")
         }
-        interpreted == "HOME" -> {
+        "HOME" -> {
             val success = goHome()
             VoiceCommandResult(success, if (success) "Went home" else "Could not go home", "HOME")
         }
-        interpreted.startsWith("NONE:") -> {
-            val reason = interpreted.removePrefix("NONE:").trim()
-            VoiceCommandResult(false, reason, null)
-        }
-        else -> {
-            VoiceCommandResult(false, "Could not interpret command", null)
-        }
+        "TYPE" -> VoiceCommandResult(false, "Typing text is not supported by this service (asked to type '$argument')", "TYPE")
+        "NONE" -> VoiceCommandResult(false, argument, null)
+        else -> VoiceCommandResult(false, "Could not interpret the model's answer: $interpreted", null)
     }
 }
 
@@ -468,7 +466,8 @@ suspend fun TogaiPlusOrchestrator.executeSystemIntelligenceStep(
             true to summary.summary
         }
         "get_context" -> {
-            true to service.getScreenContext()
+            val context = service.getScreenContext()
+            (context != null) to (context ?: "No screen content available")
         }
         "get_media" -> {
             val media = service.getCurrentMediaInfo()

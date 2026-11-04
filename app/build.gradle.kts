@@ -240,6 +240,12 @@ dependencies {
 // JUnit 5 platform runs both the JUnit 5 and (via vintage) JUnit 4 tests
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
+    // Print full assertion messages (e.g. what a served model actually said) in the build log
+    testLogging {
+        events("failed")
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+        showStandardStreams = false
+    }
 }
 
 // Apply Google Services plugin

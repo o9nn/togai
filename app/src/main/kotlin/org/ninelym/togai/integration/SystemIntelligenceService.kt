@@ -369,12 +369,9 @@ class SystemIntelligenceService : AccessibilityService() {
     }
 
     /**
-     * Get screen context summary
+     * Get screen context summary, or null when no screen content is available
      */
-    fun getScreenContext(): String {
-        val content = getScreenContent() ?: return "No screen content available"
-        return content.summary
-    }
+    fun getScreenContext(): String? = getScreenContent()?.summary
 
     /**
      * Observe screen changes
