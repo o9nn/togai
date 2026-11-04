@@ -65,7 +65,7 @@ class ChatService(
     }
     
     /**
-     * Send a message in the active conversation
+     * Send a message in the active conversation; returns the character's reply message
      */
     suspend fun sendMessage(
         text: String,
@@ -78,7 +78,8 @@ class ChatService(
     }
     
     /**
-     * Send a message in a specific conversation
+     * Send a message in a specific conversation. The user's message and the model's reply are both
+     * added to the conversation; the returned message is the reply, whose content is the model's text.
      */
     suspend fun sendMessage(
         conversationId: String,
@@ -150,7 +151,10 @@ class ChatService(
                         )
                     }
                     
-                    Result.success(userMessage)
+                    Result.success(
+                        _conversations.value[conversationId]?.messages?.find { it.id == assistantMessageId }
+                            ?: assistantMessage.copy(content = response.text, state = MessageState.SENT)
+                    )
                 } else {
                     // Update message state to error
                     updateMessage(conversationId, assistantMessageId) { msg ->

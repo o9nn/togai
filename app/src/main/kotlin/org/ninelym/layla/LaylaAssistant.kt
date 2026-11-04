@@ -327,16 +327,10 @@ class LaylaAssistant {
     }
     
     /**
-     * Send a message in the current conversation
+     * Send a message in the current conversation and return Layla's reply, as the model wrote it
      */
-    suspend fun sendMessage(message: String): Result<String> {
-        val result = chatService.sendMessage(message)
-        return if (result.isSuccess) {
-            Result.success("Message sent successfully")
-        } else {
-            Result.failure(result.exceptionOrNull() ?: Exception("Failed to send message"))
-        }
-    }
+    suspend fun sendMessage(message: String): Result<String> =
+        chatService.sendMessage(message).map { it.content }
     
     /**
      * Ask Layla directly and get the model's reply text
@@ -345,16 +339,10 @@ class LaylaAssistant {
         inferenceService.infer(message).map { it.text }
     
     /**
-     * Remember text (text processing feature)
+     * Remember text (text processing feature); returns the id of the stored memory
      */
-    suspend fun rememberText(text: String, source: String? = null): Result<String> {
-        val result = textProcessingService.rememberText(text, source)
-        return if (result.isSuccess) {
-            Result.success("Text remembered successfully!")
-        } else {
-            Result.failure(result.exceptionOrNull() ?: Exception("Failed to remember text"))
-        }
-    }
+    suspend fun rememberText(text: String, source: String? = null): Result<String> =
+        textProcessingService.rememberText(text, source).map { it.id }
     
     /**
      * Chat with selected text
@@ -595,7 +583,7 @@ suspend fun main() {
         
         val rememberResult = layla.rememberText(textToRemember, "Wikipedia")
         if (rememberResult.isSuccess) {
-            println("  ✅ ${rememberResult.getOrThrow()}")
+            println("  ✅ Stored as memory ${rememberResult.getOrThrow()}")
         }
         
         println()
