@@ -6,6 +6,8 @@ import kotlinx.coroutines.flow.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.buildJsonObject
 import org.ninelym.togai.util.ErrorHandler
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
@@ -659,19 +661,22 @@ class CogAIBridge internal constructor(
         apiKey: String? = null,
         baseUrl: String? = null
     ): Boolean {
-        val configUpdate = buildString {
-            append("cd $COGAI_DIR && python -c \"")
-            append("import json; ")
-            append("c = json.load(open('config/config.json')); ")
-            append("c['llm']['providers']['$provider'] = {")
-            if (apiKey != null) append("'api_key': '$apiKey', ")
-            if (baseUrl != null) append("'base_url': '$baseUrl', ")
-            append("}; ")
-            append("json.dump(c, open('config/config.json', 'w'), indent=2)")
-            append("\"")
+        // Values travel as one JSON argument; the program text is fixed, so nothing in them can run
+        val settings = buildJsonObject {
+            put("provider", provider)
+            if (apiKey != null) put("api_key", apiKey)
+            if (baseUrl != null) put("base_url", baseUrl)
         }
-
-        val result = termux.executeCommand(configUpdate)
+        val program = """
+import json, sys
+s = json.loads(sys.argv[1])
+c = json.load(open('config/config.json'))
+c['llm']['providers'][s['provider']] = {k: v for k, v in s.items() if k != 'provider'}
+json.dump(c, open('config/config.json', 'w'), indent=2)
+        """.trimIndent()
+        val result = termux.executeCommand(
+            "cd ${shellPath(COGAI_DIR)} && python -c ${shellQuote(program)} ${shellQuote(settings.toString())}"
+        )
         return result.isSuccess
     }
 
@@ -679,16 +684,14 @@ class CogAIBridge internal constructor(
      * Set default LLM provider
      */
     suspend fun setDefaultProvider(provider: String): Boolean {
-        val configUpdate = """
-            cd $COGAI_DIR && python -c "
-            import json
-            c = json.load(open('config/config.json'))
-            c['llm']['default_provider'] = '$provider'
-            json.dump(c, open('config/config.json', 'w'), indent=2)
-            "
+        val program = """
+import json, sys
+c = json.load(open('config/config.json'))
+c['llm']['default_provider'] = sys.argv[1]
+json.dump(c, open('config/config.json', 'w'), indent=2)
         """.trimIndent()
 
-        val result = termux.executeCommand(configUpdate)
+        val result = termux.executeCommand("cd ${shellPath(COGAI_DIR)} && python -c ${shellQuote(program)} ${shellQuote(provider)}")
         return result.isSuccess
     }
 

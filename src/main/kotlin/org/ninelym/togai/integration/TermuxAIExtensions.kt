@@ -51,14 +51,14 @@ suspend fun TermuxIntegrationService.setupPythonProject(
     pythonVersion: String = "python"
 ): CommandResult {
     val commands = mutableListOf(
-        "mkdir -p $projectPath",
-        "cd $projectPath && $pythonVersion -m venv venv",
-        "cd $projectPath && source venv/bin/activate && pip install --upgrade pip"
+        "mkdir -p ${shellPath(projectPath)}",
+        "cd ${shellPath(projectPath)} && ${shellQuote(pythonVersion)} -m venv venv",
+        "cd ${shellPath(projectPath)} && . venv/bin/activate && pip install --upgrade pip"
     )
 
     if (requirements.isNotEmpty()) {
-        val reqString = requirements.joinToString(" ")
-        commands.add("cd $projectPath && source venv/bin/activate && pip install $reqString")
+        val reqString = requirements.joinToString(" ") { shellQuote(it) }
+        commands.add("cd ${shellPath(projectPath)} && . venv/bin/activate && pip install $reqString")
     }
 
     val results = executeSequence(commands)
@@ -89,13 +89,13 @@ suspend fun TermuxIntegrationService.setupNodeProject(
     val installCmd = if (useYarn) "yarn add" else "npm install"
 
     val commands = mutableListOf(
-        "mkdir -p $projectPath",
-        "cd $projectPath && $pm init -y"
+        "mkdir -p ${shellPath(projectPath)}",
+        "cd ${shellPath(projectPath)} && $pm init -y"
     )
 
     if (packages.isNotEmpty()) {
-        val pkgString = packages.joinToString(" ")
-        commands.add("cd $projectPath && $installCmd $pkgString")
+        val pkgString = packages.joinToString(" ") { shellQuote(it) }
+        commands.add("cd ${shellPath(projectPath)} && $installCmd $pkgString")
     }
 
     val results = executeSequence(commands)
@@ -119,7 +119,7 @@ suspend fun TermuxIntegrationService.findTodosInRepo(
     repoPath: String
 ): CommandResult {
     return executeCommand(
-        "cd $repoPath && grep -rn 'TODO\\|FIXME\\|HACK\\|XXX' --include='*.kt' --include='*.java' --include='*.py' --include='*.js' --include='*.ts' . 2>/dev/null || true"
+        "cd ${shellPath(repoPath)} && grep -rn 'TODO\\|FIXME\\|HACK\\|XXX' --include='*.kt' --include='*.java' --include='*.py' --include='*.js' --include='*.ts' . 2>/dev/null || true"
     )
 }
 
@@ -210,7 +210,7 @@ suspend fun TermuxIntegrationService.pingHost(
     host: String,
     count: Int = 3
 ): PingResult {
-    val result = executeCommand("ping -c $count $host", timeout = 30.seconds)
+    val result = executeCommand("ping -c $count ${shellQuote(host)}", timeout = 30.seconds)
 
     val avgLatency = if (result.isSuccess) {
         // Parse avg latency from ping output
@@ -285,7 +285,7 @@ suspend fun TermuxIntegrationService.httpRequest(
 fun TermuxIntegrationService.tailLog(
     logPath: String,
     lines: Int = 50
-) = observeCommandOutput("tail -f -n $lines $logPath")
+) = observeCommandOutput("tail -f -n $lines ${shellPath(logPath)}")
 
 /**
  * Search for files matching a pattern
@@ -313,9 +313,9 @@ suspend fun TermuxIntegrationService.createArchive(
     format: ArchiveFormat = ArchiveFormat.TAR_GZ
 ): CommandResult {
     val command = when (format) {
-        ArchiveFormat.TAR_GZ -> "tar -czvf $archivePath -C $(dirname $sourcePath) $(basename $sourcePath)"
-        ArchiveFormat.ZIP -> "zip -r $archivePath $sourcePath"
-        ArchiveFormat.TAR -> "tar -cvf $archivePath -C $(dirname $sourcePath) $(basename $sourcePath)"
+        ArchiveFormat.TAR_GZ -> "tar -czvf ${shellPath(archivePath)} -C \"\$(dirname ${shellPath(sourcePath)})\" \"\$(basename ${shellPath(sourcePath)})\""
+        ArchiveFormat.ZIP -> "zip -r ${shellPath(archivePath)} ${shellPath(sourcePath)}"
+        ArchiveFormat.TAR -> "tar -cvf ${shellPath(archivePath)} -C \"\$(dirname ${shellPath(sourcePath)})\" \"\$(basename ${shellPath(sourcePath)})\""
     }
     return executeCommand(command, timeout = 300.seconds)
 }
@@ -333,17 +333,17 @@ suspend fun TermuxIntegrationService.extractArchive(
 ): CommandResult {
     val command = when {
         archivePath.endsWith(".tar.gz") || archivePath.endsWith(".tgz") ->
-            "tar -xzvf $archivePath -C $destinationPath"
+            "tar -xzvf ${shellPath(archivePath)} -C ${shellPath(destinationPath)}"
         archivePath.endsWith(".zip") ->
-            "unzip $archivePath -d $destinationPath"
+            "unzip ${shellPath(archivePath)} -d ${shellPath(destinationPath)}"
         archivePath.endsWith(".tar") ->
-            "tar -xvf $archivePath -C $destinationPath"
+            "tar -xvf ${shellPath(archivePath)} -C ${shellPath(destinationPath)}"
         archivePath.endsWith(".7z") ->
-            "7z x $archivePath -o$destinationPath"
+            "7z x ${shellPath(archivePath)} -o${shellPath(destinationPath)}"
         else ->
-            "tar -xf $archivePath -C $destinationPath"
+            "tar -xf ${shellPath(archivePath)} -C ${shellPath(destinationPath)}"
     }
-    return executeCommand("mkdir -p $destinationPath && $command")
+    return executeCommand("mkdir -p ${shellPath(destinationPath)} && $command")
 }
 
 /**
@@ -353,21 +353,14 @@ suspend fun TermuxIntegrationService.scrapeUrl(
     url: String,
     selector: String? = null
 ): CommandResult {
-    val pythonCode = if (selector != null) {
-        """
+    // The URL is passed as an argument, never spliced into the program text
+    val pythonCode = """
+import sys
 import urllib.request
-from html.parser import HTMLParser
-html = urllib.request.urlopen('$url').read().decode()
+html = urllib.request.urlopen(sys.argv[1]).read().decode()
 print(html)
-        """.trimIndent()
-    } else {
-        """
-import urllib.request
-html = urllib.request.urlopen('$url').read().decode()
-print(html)
-        """.trimIndent()
-    }
-    return python(pythonCode, timeout = 30.seconds)
+    """.trimIndent()
+    return python(pythonCode, args = listOf(url), timeout = 30.seconds)
 }
 
 /**
@@ -439,3 +432,7 @@ data class WorkflowResult(
  * "'; rm -rf ~" reaches the command verbatim and can never run as shell.
  */
 fun shellQuote(value: String): String = "'" + value.replace("'", "'\\''") + "'"
+
+/** Quote a path as one shell word, keeping a leading `~/` unquoted so the shell still expands it. */
+fun shellPath(path: String): String =
+    if (path == "~") "~" else if (path.startsWith("~/")) "~/" + shellQuote(path.removePrefix("~/")) else shellQuote(path)

@@ -167,6 +167,11 @@ class Phase7Demo {
         nodeA.startSync()
         nodeB.startSync()
 
+        // Node Alpha listens on a real loopback port; Node Beta connects to it with the normal handshake
+        val alphaEndpoint = LoopbackSyncEndpoint()
+        val connection = nodeB.connectPeer("node-alpha", alphaEndpoint.url)
+        println("   - Node Beta -> Node Alpha: ${connection.message}")
+
         // Add atom on node A
         println("\n   Adding atom on Node Alpha...")
         val newAtom = Atom(
@@ -213,7 +218,11 @@ class Phase7Demo {
 
         nodeA.stopSync()
         nodeB.stopSync()
-        println("\n   [OK] Distributed sync demo completed")
+        alphaEndpoint.close()
+        println(
+            if (mergeResult.success) "\n   [OK] Distributed sync demo completed"
+            else "\n   [FAILED] Distributed sync demo: ${mergeResult.message}"
+        )
     }
 
     /**
@@ -393,4 +402,28 @@ private fun Hypergraph.addRelation(sourceId: String, targetId: String, relationT
         truthValue = TruthValue(0.9f, TruthValue.DEFAULT.confidence)
     )
     this.addAtom(relationAtom)
+}
+
+/** A real listening socket on 127.0.0.1 that acknowledges each sync POST with HTTP 200. */
+private class LoopbackSyncEndpoint : AutoCloseable {
+    private val socket = java.net.ServerSocket(0, 50, java.net.InetAddress.getLoopbackAddress())
+    val url: String get() = "http://127.0.0.1:${socket.localPort}"
+
+    init {
+        kotlin.concurrent.thread(isDaemon = true) {
+            while (!socket.isClosed) {
+                val client = try { socket.accept() } catch (e: Exception) { break }
+                kotlin.concurrent.thread(isDaemon = true) {
+                    client.use {
+                        it.soTimeout = 2000
+                        val input = it.getInputStream()
+                        runCatching { while (input.available() > 0 || input.read() != -1) { if (input.available() == 0) break } }
+                        it.getOutputStream().write("HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".toByteArray())
+                    }
+                }
+            }
+        }
+    }
+
+    override fun close() = socket.close()
 }
