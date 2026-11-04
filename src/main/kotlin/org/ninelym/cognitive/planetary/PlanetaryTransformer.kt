@@ -229,7 +229,8 @@ class PlanetaryTransformer {
     // Helper methods
     
     private fun synthesizeRegionalConsensus(solutions: List<LocalSolution>): String {
-        if (solutions.isEmpty()) return "No consensus reached"
+        // No participating city means no consensus text, not a stock sentence
+        if (solutions.isEmpty()) return ""
         
         return "Regional consensus from ${solutions.size} cities:\n" +
             solutions.joinToString("\n") { "• ${it.cityName}: ${it.solution}" }
