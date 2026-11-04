@@ -1,5 +1,7 @@
 package org.ninelym.cognitive.integration
 
+import kotlinx.coroutines.flow.first
+
 import org.ninelym.cognitive.CognitiveEngine
 import org.ninelym.cognitive.CognitiveTensor
 import org.ninelym.cognitive.api.*
@@ -73,7 +75,7 @@ class IntegrationVerificationSystem(
             "agent_registration" to { testAgentRegistration() },
             "sensor_data_submission" to { testSensorDataSubmission() },
             "effector_actions" to { testEffectorActions() },
-            "websocket_connectivity" to { testWebSocketConnectivity() }
+            "update_stream" to { testUpdateStream() }
         )
         
         val results = mutableMapOf<String, TestResult>()
@@ -237,12 +239,13 @@ class IntegrationVerificationSystem(
         return response.message.isNotEmpty()
     }
     
-    private suspend fun testWebSocketConnectivity(): Boolean {
-        // Test WebSocket stream creation
+    /**
+     * Passes only if a mesh update is actually delivered on the in-process update stream
+     * (the mesh API has no network listener, so there is no WebSocket to test).
+     */
+    private suspend fun testUpdateStream(): Boolean {
         return try {
-            val stream = meshAPI.getMeshUpdateStream()
-            // In a real implementation, we'd test actual WebSocket connectivity
-            true
+            kotlinx.coroutines.withTimeoutOrNull(10_000) { meshAPI.getMeshUpdateStream().first() } != null
         } catch (e: Exception) {
             false
         }
@@ -417,11 +420,17 @@ class IntegrationVerificationSystem(
         }
     }
     
+    /**
+     * Connect a Unity, a ROS and a web client at the same time and check the mesh sees all three.
+     */
     private fun testCrossPlatformIntegration(): Boolean {
         return try {
-            // Test that all three platforms can be used simultaneously
-            // In a real scenario, this would test actual cross-platform data flow
-            true
+            val before = meshAPI.getMeshStatus().agents
+            val unity = unity3DBinding.connectUnityClient("CrossUnity", listOf("Transform"), "CrossScene")
+            val ros = rosBinding.connectROSNode("cross_node", listOf("navigation"), "ROS2", "/cross")
+            val web = webAgentBinding.connectWebClient("cross_web", listOf("DOM"), "CrossAgent/1.0", "cross.localhost")
+            val after = meshAPI.getMeshStatus().agents
+            unity.success && ros.success && web.success && after - before >= 3f
         } catch (e: Exception) {
             false
         }
@@ -481,7 +490,7 @@ class IntegrationVerificationSystem(
         val agentCount = 50
         val startTime = System.currentTimeMillis()
         
-        // Simulate concurrent agent registration
+        // Register many agents back to back and measure throughput
         repeat(agentCount) { i ->
             val request = AgentRegistrationRequest(
                 name = "TestAgent$i",

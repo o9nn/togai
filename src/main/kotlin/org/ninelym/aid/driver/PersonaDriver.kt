@@ -103,20 +103,18 @@ data class TraitModification(
 )
 
 /**
- * Speech pattern configuration
+ * Speech pattern: how a persona tends to talk, described for the language model.
+ * It holds style descriptions only; the model writes every word the persona says.
  */
 data class SpeechPattern(
     val id: String = UUID.randomUUID().toString(),
     val name: String,
-    val prefixes: List<String> = emptyList(),
-    val suffixes: List<String> = emptyList(),
-    val fillers: List<String> = emptyList(),
-    val emoticons: List<String> = emptyList(),
+    /** Descriptions such as "bubbly giggling interjections" or "uses cute kaomoji". */
+    val styleNotes: List<String> = emptyList(),
     val vocabularyStyle: VocabularyStyle = VocabularyStyle.NEUTRAL,
     val sentenceStructure: SentenceStructure = SentenceStructure.STANDARD,
-    val emphasisPatterns: List<String> = emptyList(),
-    val triggerWords: Map<String, List<String>> = emptyMap(), // word -> alternatives
-    val probability: Float = 0.5f // How often to apply the pattern
+    /** How strongly the pattern should colour replies (0-1). */
+    val intensity: Float = 0.5f
 )
 
 enum class VocabularyStyle {
@@ -556,14 +554,17 @@ open class BasePersonaDriver(
     )
 
     /**
-     * Speech patterns are described to the model as style guidance; phrases are never inserted.
+     * Speech patterns are described to the model as style guidance.
      */
     protected open fun speechStyleHints(): List<String> = spec.speechPatterns.flatMap { pattern ->
         buildList {
-            add("${pattern.name}: ${pattern.vocabularyStyle.name.lowercase()} vocabulary, ${pattern.sentenceStructure.name.lowercase()} sentences")
-            (pattern.prefixes + pattern.suffixes + pattern.fillers).takeIf { it.isNotEmpty() }
-                ?.let { add("typical expressions such as ${it.take(6).joinToString(", ")}") }
-            pattern.emoticons.takeIf { it.isNotEmpty() }?.let { add("sometimes uses emoticons like ${it.take(4).joinToString(" ")}") }
+            val strength = when {
+                pattern.intensity >= 0.7f -> "strongly"
+                pattern.intensity >= 0.4f -> "noticeably"
+                else -> "lightly"
+            }
+            add("${pattern.vocabularyStyle.name.lowercase()} vocabulary and ${pattern.sentenceStructure.name.lowercase()} sentences, applied $strength")
+            addAll(pattern.styleNotes)
         }
     }
 

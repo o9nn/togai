@@ -427,8 +427,8 @@ class PersonaFactoryTest {
             emotionalTrait("happiness", 0.9f)
             speechPattern(
                 name = "test-pattern",
-                prefixes = listOf("Hello!", "Hi there!"),
-                probability = 0.6f
+                styleNotes = listOf("friendly greetings"),
+                intensity = 0.6f
             )
         }
 

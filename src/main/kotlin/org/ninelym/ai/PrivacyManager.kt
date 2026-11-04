@@ -477,7 +477,7 @@ private class DataEncryption {
     private lateinit var secretKey: SecretKey
     
     fun initialize() {
-        // In a real implementation, this would properly generate or load a key
+        // A fresh AES-256 key per process: stored entries can't be read by another process
         val keyGenerator = KeyGenerator.getInstance("AES")
         keyGenerator.init(256)
         secretKey = keyGenerator.generateKey()

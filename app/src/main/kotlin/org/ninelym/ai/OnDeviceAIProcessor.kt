@@ -252,6 +252,11 @@ class OnDeviceAIProcessor(
     }
     
     /**
+     * Enforce the privacy retention policy and release cached images; returns items removed
+     */
+    fun optimize(): Int = privacyManager.cleanupOldData() + imageGenerator.clearCache()
+    
+    /**
      * Get system statistics
      */
     fun getSystemStats(): AISystemStats {

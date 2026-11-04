@@ -117,21 +117,17 @@ class PersonaBuilder(private var name: String) {
      */
     fun speechPattern(
         name: String,
-        prefixes: List<String> = emptyList(),
-        suffixes: List<String> = emptyList(),
-        fillers: List<String> = emptyList(),
-        emoticons: List<String> = emptyList(),
+        styleNotes: List<String> = emptyList(),
         vocabularyStyle: VocabularyStyle = VocabularyStyle.NEUTRAL,
-        probability: Float = 0.5f
+        sentenceStructure: SentenceStructure = SentenceStructure.STANDARD,
+        intensity: Float = 0.5f
     ) = apply {
         speechPatterns.add(SpeechPattern(
             name = name,
-            prefixes = prefixes,
-            suffixes = suffixes,
-            fillers = fillers,
-            emoticons = emoticons,
+            styleNotes = styleNotes,
             vocabularyStyle = vocabularyStyle,
-            probability = probability
+            sentenceStructure = sentenceStructure,
+            intensity = intensity
         ))
     }
 
@@ -357,11 +353,14 @@ object PersonaFactory {
             // Playful speech patterns
             speechPattern(
                 name = "chaotic_expressions",
-                prefixes = listOf("Ehehe~", "Ooh!", "Hmm~", "Yay!"),
-                suffixes = listOf("~", "!", "♪", "(*≧▽≦)"),
-                emoticons = listOf("(◕‿◕)", "(ノ◕ヮ◕)ノ*:・゚✧", "\\(^o^)/"),
+                styleNotes = listOf(
+                    "opens with giggly or excited interjections",
+                    "trails sentences off with a tilde or musical note",
+                    "sprinkles in happy kaomoji"
+                ),
                 vocabularyStyle = VocabularyStyle.PLAYFUL,
-                probability = 0.7f
+                sentenceStructure = SentenceStructure.EXCLAMATORY,
+                intensity = 0.7f
             )
 
             defaultTensor(AIDTensor(
@@ -409,7 +408,7 @@ object PersonaFactory {
             speechPattern(
                 name = "professional_speech",
                 vocabularyStyle = VocabularyStyle.FORMAL,
-                probability = 0.3f
+                intensity = 0.3f
             )
         }
     }
@@ -435,12 +434,10 @@ object PersonaFactory {
             original.speechPatterns.forEach { pattern ->
                 speechPattern(
                     name = pattern.name,
-                    prefixes = pattern.prefixes,
-                    suffixes = pattern.suffixes,
-                    fillers = pattern.fillers,
-                    emoticons = pattern.emoticons,
+                    styleNotes = pattern.styleNotes,
                     vocabularyStyle = pattern.vocabularyStyle,
-                    probability = pattern.probability
+                    sentenceStructure = pattern.sentenceStructure,
+                    intensity = pattern.intensity
                 )
             }
 

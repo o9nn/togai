@@ -185,7 +185,7 @@ interface StopServiceReceiver : TogaiBroadcastReceiver {
 }
 
 // ============================================================================
-// Implementation Stubs
+// Base Implementations
 // ============================================================================
 
 /**

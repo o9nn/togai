@@ -7,6 +7,8 @@ import androidx.core.app.NotificationCompat
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import org.ninelym.togai.R
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 
 /**
  * Firebase Cloud Messaging service
@@ -27,25 +29,28 @@ class TogaiFirebaseMessagingService : FirebaseMessagingService() {
     }
     
     private fun sendTokenToServer(token: String) {
-        // Store token locally
-        getSharedPreferences("togai_prefs", MODE_PRIVATE)
-            .edit()
-            .putString("fcm_token", token)
-            .apply()
+        val prefs = getSharedPreferences("togai_prefs", MODE_PRIVATE)
+        prefs.edit().putString("fcm_token", token).apply()
         
-        // TODO: Implement server sync when backend is ready
-        // This should send the token to your backend server
-        // Example:
-        // CoroutineScope(Dispatchers.IO).launch {
-        //     try {
-        //         apiService.updateFcmToken(token)
-        //         Log.i(TAG, "Token sent to server successfully")
-        //     } catch (e: Exception) {
-        //         Log.e(TAG, "Failed to send token to server", e)
-        //     }
-        // }
-        
-        Log.i(TAG, "Token stored locally, server sync pending backend implementation")
+        // Registered with the push server configured under "push_server_url", if any
+        val server = prefs.getString("push_server_url", null)
+        if (server == null) {
+            Log.i(TAG, "No push server configured; token kept on device only")
+            return
+        }
+        Thread {
+            try {
+                val body = """{"token":"$token"}""".toRequestBody("application/json".toMediaType())
+                okhttp3.OkHttpClient().newCall(
+                    okhttp3.Request.Builder().url("${server.trimEnd('/')}/fcm-token").post(body).build()
+                ).execute().use { response ->
+                    if (response.isSuccessful) Log.i(TAG, "Token registered with push server")
+                    else Log.e(TAG, "Push server rejected token: HTTP ${response.code}")
+                }
+            } catch (e: java.io.IOException) {
+                Log.e(TAG, "Failed to send token to push server", e)
+            }
+        }.start()
     }
     
     override fun onMessageReceived(message: RemoteMessage) {
@@ -54,9 +59,11 @@ class TogaiFirebaseMessagingService : FirebaseMessagingService() {
         Log.i(TAG, "Message received from: ${message.from}")
         
         message.notification?.let { notification ->
+            // Only show what the sender actually sent
+            val body = notification.body ?: return@let
             showNotification(
                 notification.title ?: "Togai",
-                notification.body ?: "New message"
+                body
             )
         }
         

@@ -143,11 +143,11 @@ class EvolutionaryOptimizer(
         // Check cache first
         fitnessCache[individual.id]?.let { return it }
         
-        // Simulate applying optimizations and measure improvement
+        // Estimate the effect of the optimizations (analytical fitness model; nothing is applied here)
         val baselineMetrics = getCurrentSystemMetrics()
-        val simulatedMetrics = simulateOptimizations(individual, baselineMetrics)
+        val estimatedMetrics = estimateOptimizationEffects(individual, baselineMetrics)
         
-        val fitness = calculateFitnessScore(baselineMetrics, simulatedMetrics)
+        val fitness = calculateFitnessScore(baselineMetrics, estimatedMetrics)
         
         // Cache result
         fitnessCache[individual.id] = fitness
@@ -387,26 +387,26 @@ class EvolutionaryOptimizer(
         )
     }
     
-    private fun simulateOptimizations(individual: OptimizationIndividual, baseline: SystemMetrics): SystemMetrics {
-        // Simulate the effect of applying optimizations
-        var simulated = baseline.copy()
+    private fun estimateOptimizationEffects(individual: OptimizationIndividual, baseline: SystemMetrics): SystemMetrics {
+        // Analytical estimate of each optimization's effect
+        var estimated = baseline.copy()
         
-        // Simulate attention optimization effects
-        val attentionImprovement = simulateAttentionImpact(individual.attentionOptimization)
-        simulated = simulated.copy(attentionCoherence = simulated.attentionCoherence * (1.0f + attentionImprovement))
+        // Attention optimization effects
+        val attentionImprovement = estimateAttentionImpact(individual.attentionOptimization)
+        estimated = estimated.copy(attentionCoherence = estimated.attentionCoherence * (1.0f + attentionImprovement))
         
-        // Simulate processing optimization effects
-        val processingImprovement = simulateProcessingImpact(individual.processingOptimization)
-        simulated = simulated.copy(processingEfficiency = simulated.processingEfficiency * (1.0f + processingImprovement))
+        // Processing optimization effects
+        val processingImprovement = estimateProcessingImpact(individual.processingOptimization)
+        estimated = estimated.copy(processingEfficiency = estimated.processingEfficiency * (1.0f + processingImprovement))
         
-        // Simulate structure optimization effects
-        val complexityReduction = simulateStructureImpact(individual.structureOptimization)
-        simulated = simulated.copy(systemComplexity = simulated.systemComplexity * (1.0f - complexityReduction))
+        // Structure optimization effects
+        val complexityReduction = estimateStructureImpact(individual.structureOptimization)
+        estimated = estimated.copy(systemComplexity = estimated.systemComplexity * (1.0f - complexityReduction))
         
-        return simulated
+        return estimated
     }
     
-    private fun simulateAttentionImpact(optimization: AttentionOptimization): Float {
+    private fun estimateAttentionImpact(optimization: AttentionOptimization): Float {
         // Calculate expected improvement based on optimization parameters
         val focusBenefit = optimization.focusThreshold * 0.15f
         val consolidationBenefit = optimization.consolidationFactor * 0.12f
@@ -421,7 +421,7 @@ class EvolutionaryOptimizer(
         return focusBenefit + consolidationBenefit + strategyBenefit - decayPenalty
     }
     
-    private fun simulateProcessingImpact(optimization: ProcessingOptimization): Float {
+    private fun estimateProcessingImpact(optimization: ProcessingOptimization): Float {
         val batchingBenefit = if (optimization.batchSize > 10) 0.1f else 0.0f
         val parallelBenefit = if (optimization.parallelization) 0.15f else 0.0f
         val cachingBenefit = when (optimization.cachingStrategy) {
@@ -432,7 +432,7 @@ class EvolutionaryOptimizer(
         return batchingBenefit + parallelBenefit + cachingBenefit
     }
     
-    private fun simulateStructureImpact(optimization: StructureOptimization): Float {
+    private fun estimateStructureImpact(optimization: StructureOptimization): Float {
         return optimization.compressionRatio * 0.5f + optimization.linkPruningFactor * 0.3f
     }
     

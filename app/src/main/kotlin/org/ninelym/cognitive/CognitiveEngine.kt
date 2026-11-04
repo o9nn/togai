@@ -580,8 +580,8 @@ class CognitiveEngine(
         // Optimize cognitive components
         optimize()
         
-        // Optimize AI components (through cleanup, cache management, etc.)
-        // This would call internal AI system optimization
+        // Optimize AI components: enforce data retention and drop cached images
+        aiProcessor.optimize()
         
         // Perform cross-system optimization
         performCrossSystemOptimization()
