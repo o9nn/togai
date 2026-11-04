@@ -163,7 +163,7 @@ class StableDiffusionService(
             imageGenerator = generator
             currentModel = ModelInfo(
                 name = modelName,
-                path = LanguageModels.currentEndpoint().getOrNull()?.config?.baseUrl ?: "unconfigured",
+                path = LanguageModels.currentMediaEndpoint().getOrNull()?.config?.baseUrl ?: "unconfigured",
                 loadedAt = System.currentTimeMillis()
             )
             Result.success(Unit)
@@ -180,7 +180,7 @@ class StableDiffusionService(
     private fun loadDefaultModel() {
         currentModel = ModelInfo(
             name = LocalImageGenerator.DEFAULT_IMAGE_MODEL,
-            path = LanguageModels.currentEndpoint().getOrNull()?.config?.baseUrl ?: "unconfigured",
+            path = LanguageModels.currentMediaEndpoint().getOrNull()?.config?.baseUrl ?: "unconfigured",
             loadedAt = System.currentTimeMillis()
         )
     }

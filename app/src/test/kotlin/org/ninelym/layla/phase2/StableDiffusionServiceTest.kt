@@ -25,7 +25,7 @@ class StableDiffusionServiceTest {
     @Before
     fun setup() {
         assumeTrue("TOGAI_MEDIA_BASE_URL not set", mediaUrl != null)
-        LanguageModels.configure(ModelEndpointConfig(mediaUrl!!, "stable-diffusion", timeoutSeconds = 600))
+        LanguageModels.configureMedia(ModelEndpointConfig(mediaUrl!!, "stable-diffusion", timeoutSeconds = 600))
         service = StableDiffusionService()
     }
     
@@ -35,13 +35,13 @@ class StableDiffusionServiceTest {
     }
     
     @Test
-    fun `test service initialization`() = runBlocking {
+    fun `test service initialization`(): Unit = runBlocking {
         val result = service.initialize()
         assertTrue("Service should initialize successfully", result.isSuccess)
     }
     
     @Test
-    fun `test image generation with default style`() = runBlocking {
+    fun `test image generation with default style`(): Unit = runBlocking {
         service.initialize()
         
         val result = service.generateImage(
@@ -56,7 +56,7 @@ class StableDiffusionServiceTest {
     }
     
     @Test
-    fun `test image generation with custom style`() = runBlocking {
+    fun `test image generation with custom style`(): Unit = runBlocking {
         service.initialize()
         
         val result = service.generateImage(
@@ -70,7 +70,7 @@ class StableDiffusionServiceTest {
     }
     
     @Test
-    fun `test generation with parameters`() = runBlocking {
+    fun `test generation with parameters`(): Unit = runBlocking {
         service.initialize()
         
         val result = service.generateImage(
@@ -85,7 +85,7 @@ class StableDiffusionServiceTest {
     }
     
     @Test
-    fun `test generation history tracking`() = runBlocking {
+    fun `test generation history tracking`(): Unit = runBlocking {
         service.initialize()
         
         // Generate multiple images
@@ -97,7 +97,7 @@ class StableDiffusionServiceTest {
     }
     
     @Test
-    fun `test clear history`() = runBlocking {
+    fun `test clear history`(): Unit = runBlocking {
         service.initialize()
         
         service.generateImage("Test image")
@@ -110,14 +110,14 @@ class StableDiffusionServiceTest {
     }
     
     @Test
-    fun `test no active tasks remain after generation`() = runBlocking {
+    fun `test no active tasks remain after generation`(): Unit = runBlocking {
         service.initialize()
         service.generateImage("Test").getOrThrow()
         assertTrue(service.getActiveTasks().isEmpty())
     }
     
     @Test
-    fun `test model loading`() = runBlocking {
+    fun `test model loading`(): Unit = runBlocking {
         service.initialize()
         
         val result = service.loadModel("stable-diffusion")
@@ -128,13 +128,13 @@ class StableDiffusionServiceTest {
     }
     
     @Test
-    fun `test generation without initialization fails`() = runBlocking {
+    fun `test generation without initialization fails`(): Unit = runBlocking {
         val result = service.generateImage("Test prompt")
         assertTrue("Generation without initialization should fail", result.isFailure)
     }
     
     @Test
-    fun `test task cancellation`() = runBlocking {
+    fun `test task cancellation`(): Unit = runBlocking {
         service.initialize()
         
         val result = service.cancelTask("test_task_123")

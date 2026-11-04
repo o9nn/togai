@@ -14,7 +14,7 @@ import kotlin.test.assertNotNull
 class FederatedLearningEngineTest {
 
     @Test
-    fun `test participant registration`() = runBlocking {
+    fun `test participant registration`(): Unit = runBlocking {
         val engine = FederatedLearningEngine()
 
         val capabilities = FederatedLearningEngine.ParticipantCapabilities(
@@ -36,7 +36,7 @@ class FederatedLearningEngineTest {
     }
 
     @Test
-    fun `test multiple participants registration`() = runBlocking {
+    fun `test multiple participants registration`(): Unit = runBlocking {
         val engine = FederatedLearningEngine()
 
         val capabilities = FederatedLearningEngine.ParticipantCapabilities(
@@ -62,7 +62,7 @@ class FederatedLearningEngineTest {
     }
 
     @Test
-    fun `test global model initialization`() = runBlocking {
+    fun `test global model initialization`(): Unit = runBlocking {
         val engine = FederatedLearningEngine()
 
         engine.initializeGlobalModel(dimensions = 100)
@@ -115,7 +115,7 @@ class FederatedLearningEngineTest {
     }
 
     @Test
-    fun `test participant update status`() = runBlocking {
+    fun `test participant update status`(): Unit = runBlocking {
         val engine = FederatedLearningEngine()
 
         val initialCapabilities = FederatedLearningEngine.ParticipantCapabilities(
@@ -145,7 +145,7 @@ class FederatedLearningEngineTest {
     }
 
     @Test
-    fun `test training stats`() = runBlocking {
+    fun `test training stats`(): Unit = runBlocking {
         val engine = FederatedLearningEngine()
 
         val capabilities = FederatedLearningEngine.ParticipantCapabilities(
@@ -173,7 +173,7 @@ class FederatedLearningEngineTest {
     }
 
     @Test
-    fun `test model export`() = runBlocking {
+    fun `test model export`(): Unit = runBlocking {
         val engine = FederatedLearningEngine()
         engine.initializeGlobalModel(dimensions = 50)
 
@@ -224,7 +224,7 @@ class FederatedLearningEngineTest {
     }
 
     @Test
-    fun `test reset functionality`() = runBlocking {
+    fun `test reset functionality`(): Unit = runBlocking {
         val engine = FederatedLearningEngine()
 
         val capabilities = FederatedLearningEngine.ParticipantCapabilities(
@@ -249,7 +249,7 @@ class FederatedLearningEngineTest {
     }
 
     @Test
-    fun `test prune inactive participants`() = runBlocking {
+    fun `test prune inactive participants`(): Unit = runBlocking {
         val engine = FederatedLearningEngine()
 
         val capabilities = FederatedLearningEngine.ParticipantCapabilities(
@@ -350,7 +350,7 @@ class FederatedLearningEngineTest {
     }
 
     @Test
-    fun `test insufficient participants throws exception`() = runBlocking {
+    fun `test insufficient participants throws exception`(): Unit = runBlocking {
         val engine = FederatedLearningEngine(
             FederatedLearningEngine.FederatedConfig(minParticipants = 5)
         )

@@ -41,9 +41,11 @@ class FileAccessService(
     suspend fun requestPermission(permission: Permission): PermissionResult {
         return withContext(Dispatchers.Default) {
             // Reports the real grant state; prompting the user requires an Activity's permission launcher
-            val ctx = context ?: throw IllegalStateException("Checking permissions needs an Android Context")
-            val granted = androidx.core.content.ContextCompat.checkSelfPermission(ctx, permission.androidPermission) ==
-                android.content.pm.PackageManager.PERMISSION_GRANTED
+            // Without a Context nothing can be granted, so report not granted
+            val granted = context?.let {
+                androidx.core.content.ContextCompat.checkSelfPermission(it, permission.androidPermission) ==
+                    android.content.pm.PackageManager.PERMISSION_GRANTED
+            } ?: false
             _permissionState.value = _permissionState.value +
                 (permission to if (granted) PermissionStatus.GRANTED else PermissionStatus.DENIED)
             

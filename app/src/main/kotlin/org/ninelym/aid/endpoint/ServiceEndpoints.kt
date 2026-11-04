@@ -249,7 +249,7 @@ class InferenceEndpoint(
  * Microphone capture belongs to VoiceInputService; send its recordings to `transcribe`.
  */
 class VoiceEndpoint(
-    private val endpointProvider: () -> Result<OpenAICompatibleModel> = { LanguageModels.currentEndpoint() }
+    private val endpointProvider: () -> Result<OpenAICompatibleModel> = { LanguageModels.currentMediaEndpoint() }
 ) : BaseEndpointAdapter(
     endpointName = "voice",
     endpointDescription = "Voice input and output endpoint for speech recognition and synthesis",
@@ -309,7 +309,8 @@ class VoiceEndpoint(
  * Endpoint adapter for image generation, editing and analysis by served image/vision models.
  */
 class ImageEndpoint(
-    private val endpointProvider: () -> Result<OpenAICompatibleModel> = { LanguageModels.currentEndpoint() }
+    private val endpointProvider: () -> Result<OpenAICompatibleModel> = { LanguageModels.currentMediaEndpoint() },
+    private val visionProvider: () -> Result<OpenAICompatibleModel> = { LanguageModels.currentVisionEndpoint() }
 ) : BaseEndpointAdapter(
     endpointName = "image",
     endpointDescription = "Image generation and processing endpoint (Stable Diffusion)",
@@ -390,7 +391,7 @@ class ImageEndpoint(
         val file = File(imagePath)
         if (!file.isFile) return AIDResult.Error(AIDErrorCode.INVALID_REQUEST, "Image not found: $imagePath")
         val mime = if (imagePath.endsWith(".jpg", true) || imagePath.endsWith(".jpeg", true)) "image/jpeg" else "image/png"
-        val endpoint = endpointProvider().getOrElse { return modelUnavailable(it) }
+        val endpoint = visionProvider().getOrElse { return modelUnavailable(it) }
         return endpoint.describeImage(file.readBytes(), question, mime).toEndpointResult { description ->
             mapOf("imagePath" to imagePath, "description" to description, "model" to endpoint.modelId)
         }

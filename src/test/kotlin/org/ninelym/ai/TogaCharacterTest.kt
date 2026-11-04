@@ -63,7 +63,7 @@ class TogaCharacterTest {
     }
 
     @Test
-    fun togaRepliesAreWrittenByTheModel() = runBlocking {
+    fun togaRepliesAreWrittenByTheModel(): Unit = runBlocking {
         val served = model()
         val processor = OnDeviceAIProcessor({ Result.success(served) })
         assertTrue(processor.initialize("/models"))
@@ -76,7 +76,7 @@ class TogaCharacterTest {
     }
 
     @Test
-    fun togaConversationStoresModelReplies() = runBlocking {
+    fun togaConversationStoresModelReplies(): Unit = runBlocking {
         val sessionId = "toga-session-${System.currentTimeMillis()}"
         val conversation = characterSystem.startConversation("toga", sessionId)
         assertEquals("toga", conversation.character.id)

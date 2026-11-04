@@ -224,7 +224,10 @@ class LaylaAssistant {
             
             // Initialize Billing service
             println("  → Initializing billing service...")
-            billingService.initialize().getOrThrow()
+            // Billing is optional: report whether Google Play Billing is actually available
+            billingService.initialize()
+                .onSuccess { println("    billing connected") }
+                .onFailure { println("    billing unavailable: ${it.message}") }
             
             // Initialize Sharing service
             println("  → Initializing sharing service...")

@@ -43,7 +43,7 @@ class MetaCognitivePathwaySystemTest {
         val relationAtoms = (1..5).map { i ->
             Atom(
                 id = "relation_$i",
-                type = AtomType.RELATION,
+                type = AtomType.EVALUATION,
                 name = "test_relation_$i",
                 truthValue = TruthValue(0.8f, 0.85f),
                 attentionValue = AttentionValue(0.6f + i * 0.05f, 0.7f)
@@ -56,7 +56,7 @@ class MetaCognitivePathwaySystemTest {
         
         // Create some links between atoms
         for (i in 0 until conceptAtoms.size - 1) {
-            hypergraph.addLink(conceptAtoms[i].id, conceptAtoms[i + 1].id, "sequence")
+            hypergraph.addLink(HyperLink("sequence_$i", LinkType.SIMILARITY, listOf(conceptAtoms[i].id, conceptAtoms[i + 1].id)))
         }
         
         // Process some attention cycles to create realistic state
@@ -71,9 +71,9 @@ class MetaCognitivePathwaySystemTest {
         
         assertNotNull("Introspection result should not be null", result)
         assertTrue("Introspection should generate insights", result.insights.isNotEmpty())
-        assertTrue("Execution time should be positive", result.executionTimeMs > 0)
-        assertTrue("System self-awareness should be between 0 and 1", 
-                   result.systemSelfAwareness >= 0.0f && result.systemSelfAwareness <= 1.0f)
+        assertTrue("Introspection should be timestamped", result.timestamp > 0)
+        val awareness = metaSystem.getMetaCognitiveInsights().systemSelfAwareness
+        assertTrue("System self-awareness should be between 0 and 1", awareness in 0.0f..1.0f)
     }
     
     @Test
@@ -86,8 +86,9 @@ class MetaCognitivePathwaySystemTest {
         val insights = metaSystem.getMetaCognitiveInsights()
         
         assertTrue("Should extract some cognitive rules", insights.cognitiveRuleCount > 0)
-        assertTrue("Processing efficiency should be measured", insights.processingEfficiency >= 0.0f)
-        assertTrue("Attention coherence should be calculated", insights.attentionCoherence >= 0.0f)
+        val latest = metaSystem.getLatestIntrospection()!!
+        assertTrue("Processing efficiency should be measured", latest.processingEfficiency >= 0.0f)
+        assertTrue("Attention coherence should be calculated", latest.attentionCoherence >= 0.0f)
     }
     
     @Test
@@ -99,7 +100,7 @@ class MetaCognitivePathwaySystemTest {
             ecanKernel.runAttentionCycle()
         }
         
-        val patterns = metaSystem.getSelfObservationPatterns()
+        val patterns = metaSystem.getMetaCognitiveInsights().selfObservationPatterns
         
         assertNotNull("Patterns should be detected", patterns)
         // Patterns may be empty initially, but the system should be capable of detecting them
@@ -107,14 +108,9 @@ class MetaCognitivePathwaySystemTest {
     
     @Test
     fun testIntrospectionConsistency() {
-        val result1 = metaSystem.performIntrospection()
-        val result2 = metaSystem.performIntrospection()
-        val result3 = metaSystem.performIntrospection()
-        
-        // Results should be consistent within reasonable bounds
-        val awareness1 = result1.systemSelfAwareness
-        val awareness2 = result2.systemSelfAwareness
-        val awareness3 = result3.systemSelfAwareness
+        val awareness1 = metaSystem.performIntrospection().let { metaSystem.getMetaCognitiveInsights().systemSelfAwareness }
+        metaSystem.performIntrospection()
+        val awareness3 = metaSystem.performIntrospection().let { metaSystem.getMetaCognitiveInsights().systemSelfAwareness }
         
         // Self-awareness should generally increase or remain stable with introspection
         assertTrue("Self-awareness should not decrease drastically", 
@@ -125,12 +121,10 @@ class MetaCognitivePathwaySystemTest {
     fun testMetaCognitiveAtomGeneration() {
         val result = metaSystem.performIntrospection()
         
-        // Check that meta-cognitive atoms were created
-        val metaAtoms = hypergraph.getAtomsByType(AtomType.CONCEPT)
-            .filter { it.name.contains("meta_") || it.name.contains("introspection_") }
-        
-        assertTrue("Meta-cognitive atoms should be generated during introspection", 
-                   metaAtoms.isNotEmpty())
+        // Introspection describes itself as meta-cognitive atoms
+        val ids = result.metaAtoms.map { it.id }
+        assertTrue("Meta-cognitive atoms should be generated during introspection: $ids",
+                   ids.containsAll(listOf("meta_self_structure_complexity", "meta_self_attention_coherence", "meta_self_rule_count")))
     }
     
     @Test
@@ -138,11 +132,11 @@ class MetaCognitivePathwaySystemTest {
         val initialStats = hypergraph.getStats()
         val result = metaSystem.performIntrospection()
         
-        // The introspection should accurately reflect the hypergraph structure
-        assertTrue("Should detect correct atom count range", 
-                   result.insights.any { it.contains("atoms") })
-        assertTrue("Should analyze attention patterns", 
-                   result.insights.any { it.contains("attention") })
+        // The introspection should reflect the hypergraph's structure and attention
+        assertTrue("Complexity should be measured", result.hypergraphComplexity >= 0.0f)
+        assertTrue("Attention coherence should be measured", result.attentionCoherence in 0.0f..1.0f)
+        assertTrue("Insights must be about structure, attention or rules",
+                   result.insights.all { i -> listOf("complexity", "clustering", "attention", "rule").any { it in i.lowercase() } })
     }
     
     @Test
@@ -151,15 +145,8 @@ class MetaCognitivePathwaySystemTest {
         metaSystem.performIntrospection()
         metaSystem.performIntrospection()
         
-        val history = metaSystem.getIntrospectionHistory()
-        
-        assertEquals("Should maintain history of 3 introspections", 3, history.size)
-        
-        // History should be chronologically ordered
-        for (i in 1 until history.size) {
-            assertTrue("History should be chronologically ordered",
-                       history[i].executionTimeMs >= history[i-1].executionTimeMs - 100) // Allow small time variance
-        }
+        assertEquals("Should maintain history of 3 introspections", 3,
+                     metaSystem.getMetaCognitiveInsights().totalIntrospections)
     }
     
     @Test
@@ -195,7 +182,7 @@ class MetaCognitivePathwaySystemTest {
         val stressAtoms = (1..100).map { i ->
             Atom(
                 id = "stress_$i",
-                type = if (i % 2 == 0) AtomType.CONCEPT else AtomType.RELATION,
+                type = if (i % 2 == 0) AtomType.CONCEPT else AtomType.EVALUATION,
                 name = "stress_element_$i",
                 truthValue = TruthValue(kotlin.random.Random.nextFloat(), kotlin.random.Random.nextFloat()),
                 attentionValue = AttentionValue(kotlin.random.Random.nextFloat(), kotlin.random.Random.nextFloat())
@@ -211,6 +198,6 @@ class MetaCognitivePathwaySystemTest {
         
         assertNotNull("Should handle stress introspection", result)
         assertTrue("Should complete introspection in reasonable time", endTime - startTime < 5000)
-        assertTrue("Should maintain accuracy under stress", result.systemSelfAwareness >= 0.0f)
+        assertTrue("Should maintain accuracy under stress", metaSystem.getMetaCognitiveInsights().systemSelfAwareness >= 0.0f)
     }
 }

@@ -32,14 +32,14 @@ class LaylaInferenceServiceTest {
     }
     
     @Test
-    fun `test service initialization`() = runBlocking {
+    fun `test service initialization`(): Unit = runBlocking {
         requireModel()
         val result = service.initialize()
         assertTrue(result.isSuccess, "Service should initialize successfully")
     }
     
     @Test
-    fun `test model state transitions`() = runBlocking {
+    fun `test model state transitions`(): Unit = runBlocking {
         requireModel()
         service.initialize()
         
@@ -49,7 +49,7 @@ class LaylaInferenceServiceTest {
     }
     
     @Test
-    fun `test conversation history management`() = runBlocking {
+    fun `test conversation history management`(): Unit = runBlocking {
         requireModel()
         service.initialize()
         
@@ -66,7 +66,7 @@ class LaylaInferenceServiceTest {
     }
     
     @Test
-    fun `test clear history`() = runBlocking {
+    fun `test clear history`(): Unit = runBlocking {
         requireModel()
         service.initialize()
         service.infer("Test prompt")
@@ -77,7 +77,7 @@ class LaylaInferenceServiceTest {
     }
     
     @Test
-    fun `test inference without a model fails instead of answering`() = runBlocking {
+    fun `test inference without a model fails instead of answering`(): Unit = runBlocking {
         val unconfigured = LaylaInferenceService({ Result.failure(org.ninelym.llm.ModelNotConfiguredException()) })
         val result = unconfigured.infer("Test prompt")
         assertTrue(result.isFailure, "Inference must fail when no model is available")

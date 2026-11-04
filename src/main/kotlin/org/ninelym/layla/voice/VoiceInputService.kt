@@ -21,7 +21,7 @@ import java.util.concurrent.ConcurrentHashMap
  * whisper.cpp server). Requires the RECORD_AUDIO permission.
  */
 class VoiceInputService(
-    private val endpointProvider: () -> Result<OpenAICompatibleModel> = { LanguageModels.currentEndpoint() },
+    private val endpointProvider: () -> Result<OpenAICompatibleModel> = { LanguageModels.currentMediaEndpoint() },
     private val transcriptionModel: String = "whisper-1"
 ) {
     

@@ -223,7 +223,7 @@ class TaskerPluginService(
                 val prompt = params["prompt"]?.takeIf { it.isNotBlank() }
                     ?: throw IllegalArgumentException("prompt is required")
                 val style = params["style"]?.takeIf { it.isNotBlank() }
-                val bytes = LanguageModels.currentEndpoint().getOrThrow()
+                val bytes = LanguageModels.currentMediaEndpoint().getOrThrow()
                     .generateImage(if (style != null) "$prompt, in $style style" else prompt).getOrThrow()
                 File(outputDir, "tasker_image_${System.currentTimeMillis()}.png").apply { writeBytes(bytes) }.absolutePath
             }

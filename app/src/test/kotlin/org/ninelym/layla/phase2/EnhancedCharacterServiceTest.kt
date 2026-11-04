@@ -31,13 +31,13 @@ class EnhancedCharacterServiceTest {
     private fun requireModel() = assumeTrue("no live model configured", config != null)
     
     @Test
-    fun `test service initialization`() = runBlocking {
+    fun `test service initialization`(): Unit = runBlocking {
         val result = service.initialize()
         assertTrue("Service should initialize successfully", result.isSuccess)
     }
     
     @Test
-    fun `test set active character`() = runBlocking {
+    fun `test set active character`(): Unit = runBlocking {
         service.initialize()
         
         val result = service.setActiveCharacter("creative")
@@ -48,7 +48,7 @@ class EnhancedCharacterServiceTest {
     }
     
     @Test
-    fun `test set character expression`() = runBlocking {
+    fun `test set character expression`(): Unit = runBlocking {
         service.initialize()
         service.setActiveCharacter("assistant")
         
@@ -57,7 +57,7 @@ class EnhancedCharacterServiceTest {
     }
     
     @Test
-    fun `test model chooses expression for a line`() = runBlocking {
+    fun `test model chooses expression for a line`(): Unit = runBlocking {
         requireModel()
         service.initialize()
         
@@ -70,7 +70,7 @@ class EnhancedCharacterServiceTest {
     }
     
     @Test
-    fun `test sync expression with speech`() = runBlocking {
+    fun `test sync expression with speech`(): Unit = runBlocking {
         requireModel()
         service.initialize()
         service.setActiveCharacter("creative")
@@ -84,7 +84,7 @@ class EnhancedCharacterServiceTest {
     }
     
     @Test
-    fun `test get personality traits`() = runBlocking {
+    fun `test get personality traits`(): Unit = runBlocking {
         service.initialize()
         
         val traits = service.getPersonalityTraits("assistant")
@@ -94,7 +94,7 @@ class EnhancedCharacterServiceTest {
     }
     
     @Test
-    fun `test update personality trait`() = runBlocking {
+    fun `test update personality trait`(): Unit = runBlocking {
         service.initialize()
         
         val result = service.updatePersonalityTrait(
@@ -110,7 +110,7 @@ class EnhancedCharacterServiceTest {
     }
     
     @Test
-    fun `test get available characters`() = runBlocking {
+    fun `test get available characters`(): Unit = runBlocking {
         service.initialize()
         
         val characters = service.getAvailableCharacters()
@@ -123,14 +123,14 @@ class EnhancedCharacterServiceTest {
     }
     
     @Test
-    fun `test expression fails without a model instead of guessing`() = runBlocking {
+    fun `test expression fails without a model instead of guessing`(): Unit = runBlocking {
         val offline = EnhancedCharacterService(modelProvider = { Result.failure(org.ninelym.llm.ModelNotConfiguredException()) })
         offline.initialize()
         assertTrue(offline.generateExpression("creative", "This is wonderful!").isFailure)
     }
     
     @Test
-    fun `test character-specific personality traits`() = runBlocking {
+    fun `test character-specific personality traits`(): Unit = runBlocking {
         service.initialize()
         
         val creativeTraits = service.getPersonalityTraits("creative")
@@ -150,7 +150,7 @@ class EnhancedCharacterServiceTest {
     }
     
     @Test
-    fun `test expression without initialization fails`() = runBlocking {
+    fun `test expression without initialization fails`(): Unit = runBlocking {
         val result = service.setExpression("assistant", Expression.HAPPY)
         assertTrue("Setting expression without initialization should fail", result.isFailure)
     }

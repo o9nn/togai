@@ -507,6 +507,8 @@ class AIDCore private constructor(
         personaBus?.shutdown()
 
         scope.cancel()
+        // A shut-down core can't be reused; let the next getInstance() create a fresh one
+        resetInstance()
     }
 
     private suspend fun emitEvent(event: AIDEvent) {

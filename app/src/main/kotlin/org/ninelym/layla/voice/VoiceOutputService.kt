@@ -19,7 +19,7 @@ import kotlin.coroutines.resumeWithException
  * server's voice names.
  */
 class VoiceOutputService(
-    private val endpointProvider: () -> Result<OpenAICompatibleModel> = { LanguageModels.currentEndpoint() },
+    private val endpointProvider: () -> Result<OpenAICompatibleModel> = { LanguageModels.currentMediaEndpoint() },
     private val ttsModel: String = "tts-1"
 ) {
     

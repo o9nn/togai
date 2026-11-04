@@ -307,10 +307,11 @@ class SelfHealingSystem(
         }
 
         // Update status
+        // Bands (defaults): < 0.3 critical, < 0.5 unhealthy, < 0.85 degraded, otherwise healthy
         health.status = when {
-            healthScore < config.criticalHealthThreshold -> HealthStatus.CRITICAL
-            healthScore < config.degradationThreshold + config.criticalHealthThreshold -> HealthStatus.UNHEALTHY
-            healthScore < 1 - config.degradationThreshold -> HealthStatus.DEGRADED
+            healthScore < config.criticalHealthThreshold * 0.6f -> HealthStatus.CRITICAL
+            healthScore < config.criticalHealthThreshold -> HealthStatus.UNHEALTHY
+            healthScore < 1 - config.degradationThreshold / 2 -> HealthStatus.DEGRADED
             else -> HealthStatus.HEALTHY
         }
 

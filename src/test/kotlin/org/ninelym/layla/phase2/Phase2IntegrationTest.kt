@@ -15,37 +15,43 @@ class Phase2IntegrationTest {
     
     private lateinit var layla: LaylaAssistant
     
+    /** The assistant's services talk to served models (TOGAI_LLM_*); skipped without one. */
     @Before
     fun setup() {
+        org.junit.Assume.assumeTrue("no live model configured", org.ninelym.llm.ModelEndpointConfig.fromEnvironment() != null)
         layla = LaylaAssistant()
     }
     
+    private fun requireImageModel() =
+        org.junit.Assume.assumeTrue("TOGAI_MEDIA_BASE_URL not set", System.getenv("TOGAI_MEDIA_BASE_URL") != null)
+    
     @After
     fun teardown() {
-        layla.shutdown()
+        if (::layla.isInitialized) layla.shutdown()
     }
     
     @Test
-    fun `test Phase 1 initialization`() = runBlocking {
+    fun `test Phase 1 initialization`(): Unit = runBlocking {
         val result = layla.initializePhase1()
         assertTrue("Phase 1 should initialize successfully", result.isSuccess)
     }
     
     @Test
-    fun `test Phase 2 initialization`() = runBlocking {
+    fun `test Phase 2 initialization`(): Unit = runBlocking {
         layla.initializePhase1()
         val result = layla.initializePhase2()
         assertTrue("Phase 2 should initialize successfully", result.isSuccess)
     }
     
     @Test
-    fun `test full initialization`() = runBlocking {
+    fun `test full initialization`(): Unit = runBlocking {
         val result = layla.initialize()
         assertTrue("Full initialization should succeed", result.isSuccess)
     }
     
     @Test
-    fun `test Stable Diffusion service access`() = runBlocking {
+    fun `test Stable Diffusion service access`(): Unit = runBlocking {
+        requireImageModel()
         layla.initialize()
         
         val sdService = layla.getStableDiffusionService()
@@ -56,7 +62,7 @@ class Phase2IntegrationTest {
     }
     
     @Test
-    fun `test Voice services access`() = runBlocking {
+    fun `test Voice services access`(): Unit = runBlocking {
         layla.initialize()
         
         val voiceInput = layla.getVoiceInputService()
@@ -67,7 +73,7 @@ class Phase2IntegrationTest {
     }
     
     @Test
-    fun `test Character service access`() = runBlocking {
+    fun `test Character service access`(): Unit = runBlocking {
         layla.initialize()
         
         val characterService = layla.getCharacterService()
@@ -78,7 +84,7 @@ class Phase2IntegrationTest {
     }
     
     @Test
-    fun `test Tasker service access`() = runBlocking {
+    fun `test Tasker service access`(): Unit = runBlocking {
         layla.initialize()
         
         val taskerService = layla.getTaskerService()
@@ -89,7 +95,7 @@ class Phase2IntegrationTest {
     }
     
     @Test
-    fun `test Calendar service access`() = runBlocking {
+    fun `test Calendar service access`(): Unit = runBlocking {
         layla.initialize()
         
         val calendarService = layla.getCalendarService()
@@ -100,7 +106,7 @@ class Phase2IntegrationTest {
     }
     
     @Test
-    fun `test Task Manager service access`() = runBlocking {
+    fun `test Task Manager service access`(): Unit = runBlocking {
         layla.initialize()
         
         val taskManager = layla.getTaskManagerService()
@@ -111,7 +117,8 @@ class Phase2IntegrationTest {
     }
     
     @Test
-    fun `test multi-modal workflow - text to image`() = runBlocking {
+    fun `test multi-modal workflow - text to image`(): Unit = runBlocking {
+        requireImageModel()
         layla.initialize()
         
         // Start a chat conversation
@@ -126,7 +133,7 @@ class Phase2IntegrationTest {
     }
     
     @Test
-    fun `test multi-modal workflow - voice to character response`() = runBlocking {
+    fun `test multi-modal workflow - voice to character response`(): Unit = runBlocking {
         layla.initialize()
         
         // Set active character
@@ -154,7 +161,7 @@ class Phase2IntegrationTest {
     }
     
     @Test
-    fun `test automation workflow - calendar to task`() = runBlocking {
+    fun `test automation workflow - calendar to task`(): Unit = runBlocking {
         layla.initialize()
         
         // Create calendar event
@@ -178,7 +185,8 @@ class Phase2IntegrationTest {
     }
     
     @Test
-    fun `test Tasker automation workflow`() = runBlocking {
+    fun `test Tasker automation workflow`(): Unit = runBlocking {
+        requireImageModel()
         layla.initialize()
         
         val taskerService = layla.getTaskerService()
@@ -201,13 +209,13 @@ class Phase2IntegrationTest {
     }
     
     @Test
-    fun `test Phase 2 without Phase 1 initializes Phase 1 automatically`() = runBlocking {
+    fun `test Phase 2 without Phase 1 initializes Phase 1 automatically`(): Unit = runBlocking {
         val result = layla.initializePhase2()
         assertTrue("Phase 2 should auto-initialize Phase 1", result.isSuccess)
     }
     
     @Test
-    fun `test all Phase 2 services integrated properly`() = runBlocking {
+    fun `test all Phase 2 services integrated properly`(): Unit = runBlocking {
         layla.initialize()
         
         // Verify all Phase 2 services are accessible

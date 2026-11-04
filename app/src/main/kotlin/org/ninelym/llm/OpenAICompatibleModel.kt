@@ -307,6 +307,50 @@ object LanguageModels {
             ?: throw IllegalStateException("The configured model (${it.modelId}) has no OpenAI-compatible endpoint for this operation")
     }
 
+    @Volatile
+    private var media: OpenAICompatibleModel? = null
+
+    @Volatile
+    private var vision: OpenAICompatibleModel? = null
+
+    /** Server for speech and image models when it differs from the chat server. */
+    fun configureMedia(config: ModelEndpointConfig) {
+        media = OpenAICompatibleModel(config)
+    }
+
+    /** Server and model for image understanding when it differs from the chat model. */
+    fun configureVision(config: ModelEndpointConfig) {
+        vision = OpenAICompatibleModel(config)
+    }
+
+    /**
+     * Endpoint serving speech (transcription, TTS) and image generation: the one configured with
+     * [configureMedia] or TOGAI_MEDIA_BASE_URL, otherwise the main endpoint (one server for all).
+     */
+    fun currentMediaEndpoint(): Result<OpenAICompatibleModel> {
+        media?.let { return Result.success(it) }
+        System.getenv("TOGAI_MEDIA_BASE_URL")?.takeIf { it.isNotBlank() }?.let { url ->
+            return Result.success(OpenAICompatibleModel(
+                ModelEndpointConfig(url, System.getenv("TOGAI_MEDIA_MODEL") ?: "stable-diffusion", System.getenv("TOGAI_LLM_API_KEY"), 600)
+            ).also { media = it })
+        }
+        return currentEndpoint()
+    }
+
+    /**
+     * Endpoint serving a vision-capable chat model: the one configured with [configureVision] or
+     * TOGAI_VISION_BASE_URL / TOGAI_VISION_MODEL, otherwise the main endpoint.
+     */
+    fun currentVisionEndpoint(): Result<OpenAICompatibleModel> {
+        vision?.let { return Result.success(it) }
+        System.getenv("TOGAI_VISION_BASE_URL")?.takeIf { it.isNotBlank() }?.let { url ->
+            return Result.success(OpenAICompatibleModel(
+                ModelEndpointConfig(url, System.getenv("TOGAI_VISION_MODEL") ?: "nanollava", System.getenv("TOGAI_LLM_API_KEY"), 600)
+            ).also { vision = it })
+        }
+        return currentEndpoint()
+    }
+
     /** Run [block] with the configured model, propagating "not configured" as a failure. */
     suspend fun <T> with(block: suspend (LanguageModel) -> Result<T>): Result<T> =
         current().fold(onSuccess = { block(it) }, onFailure = { Result.failure(it) })

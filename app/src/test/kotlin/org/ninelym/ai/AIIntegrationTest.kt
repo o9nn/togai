@@ -35,7 +35,7 @@ class AIIntegrationTest {
 
     private fun engineWithImageModel(): CognitiveEngine {
         assumeTrue("TOGAI_MEDIA_BASE_URL not set", mediaUrl != null)
-        LanguageModels.configure(ModelEndpointConfig(mediaUrl!!, "stable-diffusion", timeoutSeconds = 600))
+        LanguageModels.configureMedia(ModelEndpointConfig(mediaUrl!!, "stable-diffusion", timeoutSeconds = 600))
         return CognitiveEngine().also { assertTrue(it.initializeAI()) }
     }
 
@@ -55,7 +55,7 @@ class AIIntegrationTest {
     }
 
     @Test
-    fun naturalLanguageIsAnsweredByTheModel() = runBlocking {
+    fun naturalLanguageIsAnsweredByTheModel(): Unit = runBlocking {
         val engine = engineWithChatModel()
         val response = engine.processNaturalLanguage("Hello, how are you today?", context = ConversationContext("test-session"))
         assertTrue("expected success, got $response", response is AIResponse.Success)
@@ -65,7 +65,7 @@ class AIIntegrationTest {
     }
 
     @Test
-    fun differentCharactersGetTheirOwnReplies() = runBlocking {
+    fun differentCharactersGetTheirOwnReplies(): Unit = runBlocking {
         val engine = engineWithChatModel()
         val formal = engine.createCognitiveCharacter("Assistant", "Helpful and formal", mapOf("formality" to 0.9f))
         val casual = engine.createCognitiveCharacter("Friend", "Casual and friendly", mapOf("friendliness" to 0.9f))
@@ -80,7 +80,7 @@ class AIIntegrationTest {
     }
 
     @Test
-    fun noModelMeansAnErrorNotAReply() = runBlocking {
+    fun noModelMeansAnErrorNotAReply(): Unit = runBlocking {
         LanguageModels.configure(ModelEndpointConfig("http://127.0.0.1:1/v1", "none", timeoutSeconds = 2))
         val engine = CognitiveEngine()
         engine.initializeAI()
@@ -88,7 +88,7 @@ class AIIntegrationTest {
     }
 
     @Test
-    fun imagesAreRenderedByTheServedDiffusionModel() = runBlocking {
+    fun imagesAreRenderedByTheServedDiffusionModel(): Unit = runBlocking {
         val engine = engineWithImageModel()
         val result = engine.generateImage("A colorful sunset over the sea", ImageStyle.ARTISTIC)
         assertTrue("expected success, got $result", result is ImageGenerationResult.Success)

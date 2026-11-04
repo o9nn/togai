@@ -214,7 +214,7 @@ class FederatedLearningEngine(
      */
     suspend fun pruneInactiveParticipants(maxInactiveMs: Long = 3600000) = mutex.withLock {
         val cutoff = System.currentTimeMillis() - maxInactiveMs
-        participants.values.filter { it.lastSeen < cutoff }.forEach {
+        participants.values.filter { it.lastSeen <= cutoff }.forEach {
             it.isActive = false
         }
     }

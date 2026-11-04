@@ -36,7 +36,7 @@ import java.util.zip.ZipFile
 class DocumentProcessingService(
     private val modelProvider: () -> Result<LanguageModel> = { LanguageModels.current() },
     /** Vision-capable endpoint used to read scanned/PDF pages. */
-    private val visionProvider: () -> Result<OpenAICompatibleModel> = { LanguageModels.currentEndpoint() }
+    private val visionProvider: () -> Result<OpenAICompatibleModel> = { LanguageModels.currentVisionEndpoint() }
 ) {
     
     // State flows for reactive updates

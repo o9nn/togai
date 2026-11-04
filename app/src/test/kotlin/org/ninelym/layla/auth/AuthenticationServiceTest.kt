@@ -11,7 +11,7 @@ class AuthenticationServiceTest {
     private val dir = Files.createTempDirectory("auth-test").toFile()
 
     @Test
-    fun `sign in succeeds only with the registered password`() = runBlocking {
+    fun `sign in succeeds only with the registered password`(): Unit = runBlocking {
         val auth = AuthenticationService(dir)
         assertTrue(auth.signIn("sam@example.com", "whatever1").isFailure)
 
@@ -24,7 +24,7 @@ class AuthenticationServiceTest {
     }
 
     @Test
-    fun `session survives a restart and OAuth or biometrics never fake success`() = runBlocking {
+    fun `session survives a restart and OAuth or biometrics never fake success`(): Unit = runBlocking {
         AuthenticationService(dir).signUp("kai@example.com", "long-password", "Kai").getOrThrow()
 
         val restarted = AuthenticationService(dir)

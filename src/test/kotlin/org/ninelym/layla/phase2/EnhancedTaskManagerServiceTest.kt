@@ -23,13 +23,13 @@ class EnhancedTaskManagerServiceTest {
     }
     
     @Test
-    fun `test service initialization`() = runBlocking {
+    fun `test service initialization`(): Unit = runBlocking {
         val result = service.initialize()
         assertTrue("Service should initialize successfully", result.isSuccess)
     }
     
     @Test
-    fun `test schedule task`() = runBlocking {
+    fun `test schedule task`(): Unit = runBlocking {
         service.initialize()
         
         val result = service.scheduleTask(
@@ -44,7 +44,7 @@ class EnhancedTaskManagerServiceTest {
     }
     
     @Test
-    fun `test schedule task with different priorities`() = runBlocking {
+    fun `test schedule task with different priorities`(): Unit = runBlocking {
         service.initialize()
         
         val lowPriority = service.scheduleTask("Low Priority", TaskPriority.LOW) {
@@ -64,7 +64,7 @@ class EnhancedTaskManagerServiceTest {
     }
     
     @Test
-    fun `test schedule recurring task`() = runBlocking {
+    fun `test schedule recurring task`(): Unit = runBlocking {
         service.initialize()
         
         val result = service.scheduleTask(
@@ -80,7 +80,7 @@ class EnhancedTaskManagerServiceTest {
     }
     
     @Test
-    fun `test cancel task`() = runBlocking {
+    fun `test cancel task`(): Unit = runBlocking {
         service.initialize()
         
         val scheduleResult = service.scheduleTask("Task to Cancel") {
@@ -95,7 +95,7 @@ class EnhancedTaskManagerServiceTest {
     }
     
     @Test
-    fun `test get task status`() = runBlocking {
+    fun `test get task status`(): Unit = runBlocking {
         service.initialize()
         
         val scheduleResult = service.scheduleTask("Status Check Task") {
@@ -109,7 +109,7 @@ class EnhancedTaskManagerServiceTest {
     }
     
     @Test
-    fun `test get all tasks`() = runBlocking {
+    fun `test get all tasks`(): Unit = runBlocking {
         service.initialize()
         
         service.scheduleTask("Task 1") { TaskResult(true, "Done") }
@@ -121,7 +121,7 @@ class EnhancedTaskManagerServiceTest {
     }
     
     @Test
-    fun `test get tasks by status`() = runBlocking {
+    fun `test get tasks by status`(): Unit = runBlocking {
         service.initialize()
         
         service.scheduleTask("Queued Task") { TaskResult(true, "Done") }
@@ -131,7 +131,7 @@ class EnhancedTaskManagerServiceTest {
     }
     
     @Test
-    fun `test clear completed tasks`() = runBlocking {
+    fun `test clear completed tasks`(): Unit = runBlocking {
         service.initialize()
         
         // Schedule and simulate completion of tasks
@@ -142,7 +142,7 @@ class EnhancedTaskManagerServiceTest {
     }
     
     @Test
-    fun `test queue statistics`() = runBlocking {
+    fun `test queue statistics`(): Unit = runBlocking {
         service.initialize()
         
         service.scheduleTask("Task 1") { TaskResult(true, "Done") }
@@ -155,7 +155,7 @@ class EnhancedTaskManagerServiceTest {
     }
     
     @Test
-    fun `test set max concurrent tasks`() = runBlocking {
+    fun `test set max concurrent tasks`(): Unit = runBlocking {
         service.initialize()
         
         val result = service.setMaxConcurrentTasks(5)
@@ -163,7 +163,7 @@ class EnhancedTaskManagerServiceTest {
     }
     
     @Test
-    fun `test max concurrent tasks bounds`() = runBlocking {
+    fun `test max concurrent tasks bounds`(): Unit = runBlocking {
         service.initialize()
         
         // Test lower bound
@@ -176,7 +176,7 @@ class EnhancedTaskManagerServiceTest {
     }
     
     @Test
-    fun `test task history tracking`() = runBlocking {
+    fun `test task history tracking`(): Unit = runBlocking {
         service.initialize()
         
         service.scheduleTask("Historical Task") { TaskResult(true, "Done") }
@@ -186,7 +186,7 @@ class EnhancedTaskManagerServiceTest {
     }
     
     @Test
-    fun `test schedule without initialization fails`() = runBlocking {
+    fun `test schedule without initialization fails`(): Unit = runBlocking {
         val result = service.scheduleTask("Uninitialized Task") {
             TaskResult(true, "Done")
         }

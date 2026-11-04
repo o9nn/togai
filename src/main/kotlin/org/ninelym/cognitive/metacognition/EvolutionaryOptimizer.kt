@@ -159,10 +159,12 @@ class EvolutionaryOptimizer(
      * Calculate fitness score based on system improvement metrics
      */
     private fun calculateFitnessScore(baseline: SystemMetrics, optimized: SystemMetrics): Float {
-        val attentionImprovement = (optimized.attentionCoherence - baseline.attentionCoherence) / baseline.attentionCoherence
-        val efficiencyImprovement = (optimized.processingEfficiency - baseline.processingEfficiency) / baseline.processingEfficiency
-        val complexityOptimization = (baseline.systemComplexity - optimized.systemComplexity) / baseline.systemComplexity
-        val stabilityImprovement = (optimized.systemStability - baseline.systemStability) / baseline.systemStability
+        // Relative change, or the absolute change when the baseline is zero (avoids NaN/infinity)
+        fun relative(new: Float, old: Float) = if (old == 0f) new - old else (new - old) / old
+        val attentionImprovement = relative(optimized.attentionCoherence, baseline.attentionCoherence)
+        val efficiencyImprovement = relative(optimized.processingEfficiency, baseline.processingEfficiency)
+        val complexityOptimization = -relative(optimized.systemComplexity, baseline.systemComplexity)
+        val stabilityImprovement = relative(optimized.systemStability, baseline.systemStability)
         
         // Weighted combination of improvements
         val fitness = (attentionImprovement * 0.3f +

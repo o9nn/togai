@@ -15,7 +15,7 @@ import java.util.concurrent.ConcurrentHashMap
  * ids the server serves.
  */
 class LocalImageGenerator(
-    private val endpointProvider: () -> Result<OpenAICompatibleModel> = { LanguageModels.currentEndpoint() },
+    private val endpointProvider: () -> Result<OpenAICompatibleModel> = { LanguageModels.currentMediaEndpoint() },
     private val imageModels: Map<String, String> = mapOf("base" to DEFAULT_IMAGE_MODEL)
 ) {
     

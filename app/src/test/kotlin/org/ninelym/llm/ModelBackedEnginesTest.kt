@@ -28,7 +28,7 @@ class ModelBackedEnginesTest {
     private val brief = "Reply with one short sentence."
 
     @Test
-    fun `Layla inference streams a model reply and keeps history`() = runBlocking {
+    fun `Layla inference streams a model reply and keeps history`(): Unit = runBlocking {
         val service = LaylaInferenceService(provider())
         service.initialize().getOrThrow()
         val streamed = StringBuilder()
@@ -40,7 +40,7 @@ class ModelBackedEnginesTest {
     }
 
     @Test
-    fun `MLC engine generates with the served model`() = runBlocking {
+    fun `MLC engine generates with the served model`(): Unit = runBlocking {
         val engine = MLCChatEngine(provider())
         engine.loadModel(MLCModelConfig(modelPath = config!!.model, modelLib = "served")).getOrThrow()
         val tokens = mutableListOf<String>()
@@ -51,13 +51,13 @@ class ModelBackedEnginesTest {
     }
 
     @Test
-    fun `MLC engine rejects a model the server does not serve`() = runBlocking {
+    fun `MLC engine rejects a model the server does not serve`(): Unit = runBlocking {
         val engine = MLCChatEngine(provider())
         assertTrue(engine.loadModel(MLCModelConfig(modelPath = "not-a-served-model", modelLib = "x")).isFailure)
     }
 
     @Test
-    fun `Executorch runtime without native lib generates with the served model`() = runBlocking {
+    fun `Executorch runtime without native lib generates with the served model`(): Unit = runBlocking {
         val provide = provider()
         val runtime = ExecutorchRuntime(provide)
         runtime.loadModel(LlamaModelConfig(modelPath = "model.pte", tokenizerPath = "tok.bin", systemPrompt = brief)).getOrThrow()
@@ -66,7 +66,7 @@ class ModelBackedEnginesTest {
     }
 
     @Test
-    fun `engines fail rather than answer when no model is reachable`() = runBlocking {
+    fun `engines fail rather than answer when no model is reachable`(): Unit = runBlocking {
         val dead = OpenAICompatibleModel(ModelEndpointConfig("http://127.0.0.1:1/v1", "none", timeoutSeconds = 2))
         val service = LaylaInferenceService({ Result.success(dead) })
         assertTrue(service.infer("hi").isFailure)
@@ -84,7 +84,7 @@ class ModelBackedCharactersTest {
     }
 
     @Test
-    fun `WonderfulToga replies, greets and makes haiku with the model`() = runBlocking {
+    fun `WonderfulToga replies, greets and makes haiku with the model`(): Unit = runBlocking {
         val toga = org.ninelym.ai.wonderful.WonderfulToga("u1", "Sam", org.ninelym.ai.wonderful.TogaVoice(provider()))
         val reply = toga.processMessage("I finally fixed the bug in my parser!",
             org.ninelym.ai.wonderful.TaskContext.CELEBRATION).getOrThrow()
@@ -95,7 +95,7 @@ class ModelBackedCharactersTest {
     }
 
     @Test
-    fun `persona driver answers through the model and keeps context`() = runBlocking {
+    fun `persona driver answers through the model and keeps context`(): Unit = runBlocking {
         val spec = org.ninelym.aid.persona.PersonaFactory.createToga()
         val driver = org.ninelym.aid.driver.BasePersonaDriver(spec, provider())
         driver.initialize()
@@ -107,7 +107,7 @@ class ModelBackedCharactersTest {
     }
 
     @Test
-    fun `persona driver reports an error when the model is unreachable`() = runBlocking {
+    fun `persona driver reports an error when the model is unreachable`(): Unit = runBlocking {
         val dead = OpenAICompatibleModel(ModelEndpointConfig("http://127.0.0.1:1/v1", "none", timeoutSeconds = 2))
         val driver = org.ninelym.aid.driver.BasePersonaDriver(org.ninelym.aid.persona.PersonaFactory.createToga(), { Result.success(dead) })
         assertTrue(driver.process("hi", org.ninelym.aid.core.AIDTensor.neutral()) is org.ninelym.aid.core.AIDResult.Error)

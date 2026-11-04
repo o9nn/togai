@@ -224,7 +224,7 @@ class MultimodalOrchestrator(
      * Generate image from prompt
      */
     private suspend fun generateImage(prompt: String): ImageResult {
-        val endpoint = LanguageModels.currentEndpoint().getOrThrow()
+        val endpoint = LanguageModels.currentMediaEndpoint().getOrThrow()
         val bytes = endpoint.generateImage(prompt, size = "512x512").getOrThrow()
         val file = withContext(Dispatchers.IO) {
             File(System.getProperty("java.io.tmpdir"), "togai_image_${System.currentTimeMillis()}.png").apply { writeBytes(bytes) }
@@ -236,7 +236,7 @@ class MultimodalOrchestrator(
      * Process speech input
      */
     private suspend fun processSpeech(audioData: ByteArray): SpeechResult {
-        val endpoint = LanguageModels.currentEndpoint().getOrThrow()
+        val endpoint = LanguageModels.currentMediaEndpoint().getOrThrow()
         val audio = withContext(Dispatchers.IO) {
             File.createTempFile("togai_audio_", ".wav").apply { writeBytes(audioData); deleteOnExit() }
         }

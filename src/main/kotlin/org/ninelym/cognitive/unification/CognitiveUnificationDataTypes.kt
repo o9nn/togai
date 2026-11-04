@@ -62,7 +62,9 @@ data class CognitiveMeshState(
     val sensorCount: Int,
     val effectorCount: Int,
     val meshConnectivity: Float,
-    val distributedHealth: Float
+    val distributedHealth: Float,
+    /** False when no mesh is connected; the other fields are then zero, not measurements. */
+    val connected: Boolean = false
 )
 
 /**
@@ -84,7 +86,9 @@ data class MetaCognitiveState(
  * Phase 6: Testing and Validation State
  */
 data class TestingValidationState(
+    /** Share of the core cognitive functions that have actually run. */
     val testCoverage: Float,
+    /** Share of active tensors passing validation right now. */
     val testsPassed: Float,
     val performanceBenchmarks: Map<String, Float>,
     val validationHealth: Float

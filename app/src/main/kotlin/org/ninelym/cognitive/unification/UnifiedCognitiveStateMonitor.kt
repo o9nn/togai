@@ -19,7 +19,9 @@ class UnifiedCognitiveStateMonitor(
     private val ecanKernel: ECANKernel,
     private val metaSystem: MetaCognitivePathwaySystem,
     private val optimizer: EvolutionaryOptimizer,
-    private val verificationSystem: RecursiveVerificationSystem
+    private val verificationSystem: RecursiveVerificationSystem,
+    /** Live status of the Phase 4 cognitive mesh, when one is connected. */
+    private val meshStatus: (() -> org.ninelym.cognitive.api.MeshStatusResponse)? = null
 ) {
     
     private val stateHistory = mutableListOf<UnifiedCognitiveState>()
@@ -107,13 +109,16 @@ class UnifiedCognitiveStateMonitor(
     }
     
     private fun captureMeshState(): CognitiveMeshState {
-        // Placeholder for Phase 4 mesh state - may not be fully implemented
+        // With no mesh connected there is nothing to report; it is excluded from overall health
+        val status = meshStatus?.invoke()
+            ?: return CognitiveMeshState(0, 0, 0, 0.0f, 0.0f, connected = false)
         return CognitiveMeshState(
-            agentCount = 0,
-            sensorCount = 0,
-            effectorCount = 0,
-            meshConnectivity = 0.0f,
-            distributedHealth = 0.5f // Default neutral health
+            agentCount = status.agents.toInt(),
+            sensorCount = status.sensors.toInt(),
+            effectorCount = status.effectors.toInt(),
+            meshConnectivity = status.state.coerceIn(0f, 1f),
+            distributedHealth = status.state.coerceIn(0f, 1f),
+            connected = true
         )
     }
     
@@ -126,8 +131,8 @@ class UnifiedCognitiveStateMonitor(
         return MetaCognitiveState(
             selfAwareness = insights.systemSelfAwareness,
             cognitiveRuleCount = insights.cognitiveRuleCount,
-            processingEfficiency = introspection?.processingEfficiency ?: 0.5f,
-            attentionCoherence = introspection?.attentionCoherence ?: 0.5f,
+            processingEfficiency = introspection?.processingEfficiency ?: 0f,
+            attentionCoherence = introspection?.attentionCoherence ?: 0f,
             evolutionFitness = evolutionStats.bestOverallFitness,
             convergenceRate = evolutionStats.convergenceRate,
             verificationDepth = verificationStats.averageRecursionDepth,
@@ -136,19 +141,42 @@ class UnifiedCognitiveStateMonitor(
         )
     }
     
+    /**
+     * Runtime validation measured now: coverage is the share of cognitive functions that have
+     * actually run, and pass rate the share of active tensors passing validation.
+     */
     private fun captureTestingState(): TestingValidationState {
+        val tensors = hypergraph.getActiveTensors(0.0f)
+        val passed = if (tensors.isEmpty()) 0f else tensors.count { it.isValid() }.toFloat() / tensors.size
+        val coverage = calculateFunctionCompleteness()
         return TestingValidationState(
-            testCoverage = 0.92f, // From Phase 6 implementation
-            testsPassed = 0.98f,
+            testCoverage = coverage,
+            testsPassed = passed,
             performanceBenchmarks = capturePerformanceBenchmarks(),
-            validationHealth = 0.95f // High validation health from comprehensive testing
+            validationHealth = (coverage + passed) / 2f
         )
     }
     
     private fun captureTensorSignatures(): Map<String, CognitiveTensor> {
+        val primitives = capturePrimitivesState()
+        val attention = captureAttentionState()
         return mapOf(
-            "phase1_primitives" to CognitiveTensor(0.8f, 0.7f, 0.9f, 0.6f, 0.8f),
-            "phase2_attention" to CognitiveTensor(0.7f, 0.8f, 0.8f, 0.9f, 0.7f),
+            // [complexity, truth, health, tensor share, link density] from the live hypergraph
+            "phase1_primitives" to CognitiveTensor(
+                primitives.hypergraphComplexity.coerceIn(0f, 1f),
+                primitives.averageTruthValue.coerceIn(0f, 1f),
+                primitives.primitiveHealth.coerceIn(0f, 1f),
+                if (primitives.atomCount == 0) 0f else (primitives.activeTensorCount.toFloat() / primitives.atomCount).coerceIn(0f, 1f),
+                if (primitives.atomCount == 0) 0f else (primitives.linkCount.toFloat() / primitives.atomCount).coerceIn(0f, 1f)
+            ),
+            // [efficiency, health, focus share, cycles, LTI share] from the live ECAN state
+            "phase2_attention" to CognitiveTensor(
+                attention.attentionEfficiency.coerceIn(0f, 1f),
+                attention.attentionHealth.coerceIn(0f, 1f),
+                if (primitives.atomCount == 0) 0f else (attention.attentionFocus / primitives.atomCount).coerceIn(0f, 1f),
+                (attention.cyclesRun / 10f).coerceIn(0f, 1f),
+                if (attention.totalSTI + attention.totalLTI == 0f) 0f else (attention.totalLTI / (attention.totalSTI + attention.totalLTI)).coerceIn(0f, 1f)
+            ),
             "phase5_metacognition" to calculatePhase5TensorSignature(),
             "phase6_unification" to calculatePhase6TensorSignature()
         )
@@ -169,11 +197,14 @@ class UnifiedCognitiveStateMonitor(
             "testing" to 0.15f
         )
         
+        // An unconnected mesh has no health to report; its weight is redistributed
+        val meshWeight = if (mesh.connected) weights["mesh"]!! else 0f
+        val total = weights.values.sum() - weights["mesh"]!! + meshWeight
         return (primitives.primitiveHealth * weights["primitives"]!! +
                 attention.attentionHealth * weights["attention"]!! +
-                mesh.distributedHealth * weights["mesh"]!! +
+                mesh.distributedHealth * meshWeight +
                 metaCognition.metaCognitiveHealth * weights["metaCognition"]!! +
-                testing.validationHealth * weights["testing"]!!)
+                testing.validationHealth * weights["testing"]!!) / total
     }
     
     private fun calculateUnificationIndex(
@@ -216,17 +247,17 @@ class UnifiedCognitiveStateMonitor(
         val evolutionStats = optimizer.getEvolutionStats()
         val rules = Math.min(insights.cognitiveRuleCount.toFloat() / 100.0f, 1.0f)
         val mutability = Math.min(evolutionStats.convergenceRate * 10.0f, 1.0f)
-        return CognitiveTensor(rules, mutability, evolutionStats.bestOverallFitness, insights.systemSelfAwareness, 0.8f)
+        return CognitiveTensor(rules, mutability, evolutionStats.bestOverallFitness.coerceIn(0f, 1f), insights.systemSelfAwareness, 0.8f)
     }
 
     private fun calculatePhase6TensorSignature(): CognitiveTensor {
-        // Phase 6 tensor signature: [functions, tests, docs, synthesis]
+        // Phase 6 tensor signature: [functions, validation, verification success, synthesis]
         val functions = calculateFunctionCompleteness()
-        val tests = 0.92f // Test coverage from implementation
-        val docs = 1.0f // Complete documentation
-        val synthesis = calculateCognitiveSynthesis()
+        val testing = captureTestingState()
+        val verified = verificationSystem.getRecursiveVerificationStats().verificationSuccessRate
+        val synthesis = calculateCognitiveSynthesis().coerceIn(0f, 1f)
         
-        return CognitiveTensor(functions, tests, docs, synthesis, 0.95f)
+        return CognitiveTensor(functions, testing.testsPassed, verified.coerceIn(0f, 1f), synthesis, testing.validationHealth)
     }
     
     // Helper calculation methods
@@ -279,18 +310,22 @@ class UnifiedCognitiveStateMonitor(
         verificationStats: RecursiveVerificationStats
     ): Float {
         val insightHealth = insights.systemSelfAwareness
-        val evolutionHealth = evolutionStats.bestOverallFitness
+        val evolutionHealth = evolutionStats.bestOverallFitness.coerceIn(0f, 1f)
         val verificationHealth = verificationStats.averageSystemHealth
         
         return (insightHealth + evolutionHealth + verificationHealth) / 3.0f
     }
     
+    /** Measured now / taken from the live statistics (no assumed numbers). */
     private fun capturePerformanceBenchmarks(): Map<String, Float> {
+        val atoms = hypergraph.getAllAtoms()
+        val start = System.nanoTime()
+        atoms.forEach { it.toCognitiveTensor() }
+        val seconds = (System.nanoTime() - start) / 1e9f
         return mapOf(
-            "introspection_speed" to 2.5f, // seconds
-            "evolution_convergence" to 8.0f, // generations
-            "verification_depth" to 3.2f, // layers
-            "tensor_processing_rate" to 1200.0f // tensors/second
+            "evolution_convergence" to optimizer.getEvolutionStats().convergenceRate,
+            "verification_depth" to verificationSystem.getRecursiveVerificationStats().averageRecursionDepth,
+            "tensor_processing_rate" to if (seconds > 0f) atoms.size / seconds else 0f // tensors/second
         )
     }
     
@@ -301,8 +336,16 @@ class UnifiedCognitiveStateMonitor(
             "attention", "tensor_processing", "hypergraph_management"
         )
         
-        // All functions are implemented in Phase 6
-        return 1.0f
+        // Share of the functions that have actually been exercised in this system
+        val ran = mapOf(
+            "introspection" to (metaSystem.getMetaCognitiveInsights().totalIntrospections > 0),
+            "evolution" to (optimizer.getEvolutionStats().totalGenerations > 0),
+            "verification" to (verificationSystem.getRecursiveVerificationStats().totalVerifications > 0),
+            "attention" to (computeECANStats(hypergraph, ecanKernel).cyclesRun > 0),
+            "tensor_processing" to hypergraph.getActiveTensors(0.0f).isNotEmpty(),
+            "hypergraph_management" to (hypergraph.getStats().atomCount > 0)
+        )
+        return requiredFunctions.count { ran[it] == true }.toFloat() / requiredFunctions.size
     }
     
     private fun calculateCognitiveSynthesis(): Float {

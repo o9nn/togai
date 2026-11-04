@@ -662,8 +662,8 @@ class RecursiveVerificationSystem(
      */
     fun getRecursiveVerificationStats(): RecursiveVerificationStats {
         val totalVerifications = verificationHistory.size
-        val averageDepth = verificationHistory.map { it.depth }.average().toFloat()
-        val successRate = verificationHistory.count { 
+        val averageDepth = if (verificationHistory.isEmpty()) 0f else verificationHistory.map { it.depth }.average().toFloat()
+        val successRate = if (totalVerifications == 0) 0f else verificationHistory.count { 
             it.verificationStatus == VerificationStatus.COMPLETE 
         }.toFloat() / totalVerifications
         
@@ -673,7 +673,7 @@ class RecursiveVerificationSystem(
             verificationSuccessRate = successRate,
             activeFeedbackLoops = feedbackLoops.count { it.monitored },
             totalFeedbackActions = feedbackLoops.size,
-            averageSystemHealth = if (verificationHistory.isEmpty()) 0.5f
+            averageSystemHealth = if (verificationHistory.isEmpty()) 0f
                 else verificationHistory.map { it.systemHealth }.average().toFloat()
         )
     }
